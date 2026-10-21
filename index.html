@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>banMonoTest</title>
+<style>
+:root{
+  --bg:#12141a; --panel:#191c24; --line:#2a2f3b; --ink:#e6e9f0; --dim:#98a0b3;
+  --A:#3d4f8f; --B:#8a6330; --pick:#4ec9a8; --region:#e0576e;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+main{max-width:880px;margin:0 auto;padding:40px 16px 64px}
+h1{font-size:28px;margin:0 0 6px;letter-spacing:.01em}
+.lede{color:var(--dim);font-size:16.5px;margin:0 0 28px;max-width:680px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.11em;color:var(--dim);font-weight:600;
+  margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+a{color:var(--pick)}
+p{margin:0 0 12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.stat b{display:block;font-size:26px;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat span{color:var(--dim);font-size:13px}
+.stat.x b{color:var(--region)} .stat.p b{color:#7fd1a8} .stat.u b{color:#e0c060}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:16px 18px;text-decoration:none;color:var(--ink)}
+.card:hover{border-color:var(--pick)}
+.card h3{margin:0 0 6px;font-size:17px;color:var(--pick)}
+.card p{margin:0;color:var(--dim);font-size:14px}
+.groups{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0;padding:0;list-style:none}
+.groups li{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+  padding:2px 11px;font-size:13px;color:var(--dim)}
+.groups b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.small{font-size:13px;color:var(--dim)}
+footer{margin-top:44px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>banMonoTest</h1>
+  <p class="lede">Which 2-isohedral tilings can never be made with a single tile shape? This site
+  collects the proofs, and lets you build new ones in your browser.</p>
+
+  <div class="stats" id="stats"></div>
+  <p class="small">Out of the <span id="total">1,270</span> Euclidean 2-isohedral types catalogued by
+  Delgado, Huson and Zamorzaeva.</p>
+
+  <h2>Start here</h2>
+  <div class="cards">
+    <a class="card" href="proofs.html">
+      <h3>Proof gallery →</h3>
+      <p>Every type proven impossible, grouped by the kind of argument, each with a picture and a
+      plain explanation.</p>
+    </a>
+    <a class="card" href="builder.html">
+      <h3>Proof builder →</h3>
+      <p>Pick a type, see its two tile classes, and test whether one tile's forced points can fit
+      inside the space the other tile is confined to.</p>
+    </a>
+  </div>
+
+  <h2>The question</h2>
+  <p>A 2-isohedral tiling has two classes of tiles: the symmetries of the tiling move every tile
+  onto every other tile of its own class, but never onto a tile of the other class. Usually the two
+  classes have different shapes. The question for each type is whether some choice of shapes makes
+  the two classes <b>congruent</b>, so that a single tile shape fills the whole plane in that
+  pattern (a monohedral tiling).</p>
+  <p>For many types the answer is no. A typical proof finds a set of points that one tile class is
+  forced to contain, and a region the other class can never leave. If no rotation, reflection or
+  translation fits those points inside that region, the two tiles cannot have the same shape, for
+  any choice of shapes at all.</p>
+
+  <h2>Kinds of proof</h2>
+  <p class="small">How the <span id="nimp">362</span> published proofs break down:</p>
+  <ul class="groups" id="groups"></ul>
+
+  <h2>Found a new proof?</h2>
+  <p>Build it in the <a href="builder.html">proof builder</a>, save the proof record, and send it in
+  with the <a href="https://github.com/johndberglund/banMonoTest/issues/new?template=new-proof.yml">proof
+  form</a> on GitHub. Each submission is re-checked before it is added. Types still undecided are
+  listed in the builder under "unknown only".</p>
+
+  <footer>
+    Code under the <a href="LICENSE">MIT License</a>; pictures and write-ups under
+    <a href="LICENSE-CONTENT.md">CC BY 4.0</a>. Source on
+    <a href="https://github.com/johndberglund/banMonoTest">GitHub</a>.
+  </footer>
+</main>
+
+<script src="js/dsym_types.js"></script>
+<script src="data/impossibles_manifest.js"></script>
+<script>
+const T = window.DSYM_TYPES || {}, P = window.IMPOSSIBLES_DATA || [];
+const fmt = n => n.toLocaleString('en-US');
+const count = v => Object.values(T).filter(t => t.v === v).length;
+const total = Object.keys(T).length;
+if (total) {
+  document.getElementById('total').textContent = fmt(total);
+  document.getElementById('stats').innerHTML = [
+    ['x', count('impossible'), 'proven impossible'],
+    ['p', count('possible'), 'have a single-tile solution'],
+    ['u', count('unknown'), 'still undecided'],
+  ].map(([c, n, label]) => `<div class="stat ${c}"><b>${fmt(n)}</b><span>${label}</span></div>`).join('');
+}
+const groups = {};
+for (const r of P) groups[r.group] = (groups[r.group] || 0) + 1;
+document.getElementById('nimp').textContent = fmt(P.length);
+document.getElementById('groups').innerHTML = Object.entries(groups).sort((a, b) => b[1] - a[1])
+  .map(([g, n]) => `<li>${g.replace(/-/g, ' ')} <b>${n}</b></li>`).join('');
+</script>
+</body>
+</html>

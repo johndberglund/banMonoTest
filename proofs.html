@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Impossible types</title>
+<title>Proof gallery</title>
 <style>
   :root {
     --bg: #12141a;
@@ -30,6 +30,8 @@
     background: var(--panel); border-right: 1px solid var(--border);
   }
   #search-wrap { padding: 10px; border-bottom: 1px solid var(--border); }
+  #navbar { padding: 10px 12px 0; font-size: 12.5px; color: var(--text-dim); }
+  #navbar a { color: var(--accent); }
   #search {
     width: 100%; padding: 8px 10px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--panel2); color: var(--text);
@@ -109,6 +111,7 @@
 <body>
 
 <div id="sidebar">
+  <div id="navbar"><a href="index.html">Home</a> · <a href="builder.html">Proof builder</a></div>
   <div id="search-wrap">
     <input id="search" type="text" placeholder="Search id, group, homeo, orbifold, text…" autocomplete="off">
   </div>

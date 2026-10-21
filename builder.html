@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>netshape — containment proofs for 2-isohedral types</title>
+<title>Proof builder</title>
 <style>
 :root{
   --bg:#12141a; --panel:#191c24; --line:#2a2f3b; --ink:#e6e9f0; --dim:#98a0b3;
@@ -53,6 +53,13 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
   font-size:10.5px;overflow-x:auto;max-height:190px;color:var(--dim);white-space:pre-wrap;
   word-break:break-all}
 .hint{font-size:11px;color:var(--dim);margin:6px 0 0}
+.nav{font-size:11.5px;margin:0 0 10px;color:var(--dim)}
+#cv{touch-action:none}
+#cv.grabbing{cursor:grabbing}
+#zoomBtns{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px}
+#zoomBtns button{width:32px;height:32px;margin:0;padding:0;font-size:17px;line-height:1;
+  background:rgba(32,36,46,.92)}
+#forbidToggle.on{border-color:var(--region);background:#2a1a20;color:#ffb3c0}
 .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:2px;
   background:#20242e;border:1px solid var(--line);color:var(--dim);margin-left:5px}
 #hud{position:absolute;left:12px;top:12px;background:rgba(18,20,26,.9);
@@ -88,13 +95,17 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
 </head>
 <body>
 <div id="stage"><canvas id="cv"></canvas><div id="hud">—</div>
+  <div id="zoomBtns"><button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button><button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button></div>
   <div id="fdwrap" hidden><canvas id="fd" width="300" height="300"></canvas><div id="fdhud">—</div></div>
 </div>
 
 <div id="panel">
-  <h1>netshape</h1>
-  <p class="sub">Containment proofs: configurations forced into tiles, tested against regions the
-  other tile cannot leave. Build as many of each as you need.</p>
+  <p class="nav"><a href="index.html">Home</a> · <a href="proofs.html">Proof gallery</a></p>
+  <h1>Proof builder</h1>
+  <p class="sub">Show that one tile class must contain points the other can't hold. Pick some
+  points one tile is forced to contain (a <b>configuration</b>) and the outline of the space the
+  other tile can't leave (a <b>region</b>). If the points can't fit inside the region, the two
+  tiles can't be the same shape.</p>
 
   <label for="type">Type</label>
   <select id="type"></select>
@@ -112,8 +123,8 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
     <input type="checkbox" id="curveToggle" checked style="width:auto;padding:0">
     <span>Draw edges as orbit curves</span>
   </label>
-  <p class="hint">Scroll to zoom (centred on cursor); middle-drag to pan. Some types' tiles of
-  interest sit outside the default view — pan/zoom to find them.</p>
+  <p class="hint">Drag the picture to move it; scroll or use + / − to zoom. Some types' tiles
+  of interest sit outside the first view.</p>
   <button id="fitview">Reset view</button>
 
   <h2>The two tiles</h2>
@@ -142,7 +153,7 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
     <button id="editRecenter">Recentre / resize</button>
   </div>
 
-  <h2>Build</h2>
+  <h2>1 · Build</h2>
   <div class="step" id="buildStatus">Click "+ Configuration" or "+ Region" to start a new group.</div>
   <div class="row" style="margin-top:8px">
     <button id="addCfg" class="go">+ Configuration</button>
@@ -153,9 +164,10 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
     <button id="cancelGroup" disabled>Cancel</button>
     <button id="undo" disabled>Undo last point</button>
   </div>
+  <button id="forbidToggle" hidden aria-pressed="false">Next point: allowed (solid ●)</button>
   <button id="reset">Reset everything</button>
-  <p class="hint" id="pickHint">Left-click a config point or an allowed region point. Right-click
-  a region point the tile may NOT touch.</p>
+  <p class="hint" id="pickHint">Region points are allowed (the tile may touch them) or forbidden
+  (it may not). Use the button above, right-click, or click a point again to switch it.</p>
 
   <h2>Groups <span class="badge" id="grpn">0 configs, 0 regions</span></h2>
   <div class="grouplabel">Configurations</div>
@@ -163,7 +175,7 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
   <div class="grouplabel">Regions</div>
   <div id="regList"></div>
 
-  <h2>Test</h2>
+  <h2>2 · Test</h2>
   <label for="testCfg">Configuration</label>
   <select id="testCfg"></select>
   <label for="testReg" style="margin-top:8px">Region</label>
@@ -172,8 +184,14 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
   <button id="runfam" disabled>Test across the deformation family</button>
   <div id="verdict"></div>
 
-  <h2>Record</h2>
+  <h2>3 · Save</h2>
+  <button id="saveRec" class="go">Save proof record (file)</button>
   <button id="export">Copy proof record (JSON)</button>
+  <button id="loadRec">Load a proof record…</button>
+  <input type="file" id="loadFile" accept=".json,application/json,text/plain" hidden>
+  <p class="hint">A proof record holds your configurations, regions and last test, and can be
+  loaded back in later. To send one in, use the
+  <a href="https://github.com/johndberglund/banMonoTest/issues/new?template=new-proof.yml" target="_blank" rel="noopener">proof form</a>.</p>
   <button id="savePic">Save picture (PNG)</button>
   <button id="saveSvg">Save picture (SVG)</button>
   <pre id="out">—</pre>
@@ -840,19 +858,40 @@ cv.addEventListener('wheel', e => {
   draw();
 }, { passive: false });
 
-let panning = null;
-cv.addEventListener('mousedown', e => {
-  if (e.button !== 1 || !state.dev) return;
-  e.preventDefault();
-  panning = { x: e.clientX, y: e.clientY, ox: state.view.ox, oy: state.view.oy };
+// Left-drag (or a finger) pans too; it only counts as a drag past a few pixels, so an ordinary
+// click still picks, and the click that ends a real drag is swallowed.
+let panning = null, justPanned = false;
+cv.addEventListener('pointerdown', e => {
+  if ((e.button !== 0 && e.button !== 1) || !state.dev) return;
+  if (e.button === 1) e.preventDefault();
+  panning = { id: e.pointerId, x: e.clientX, y: e.clientY, ox: state.view.ox, oy: state.view.oy, moved: false };
 });
-window.addEventListener('mousemove', e => {
-  if (!panning) return;
-  state.view.ox = panning.ox + (e.clientX - panning.x);
-  state.view.oy = panning.oy + (e.clientY - panning.y);
+window.addEventListener('pointermove', e => {
+  if (!panning || e.pointerId !== panning.id) return;
+  const dx = e.clientX - panning.x, dy = e.clientY - panning.y;
+  if (!panning.moved && Math.hypot(dx, dy) < 5) return;
+  panning.moved = true; cv.classList.add('grabbing');
+  state.view.ox = panning.ox + dx;
+  state.view.oy = panning.oy + dy;
   draw();
 });
-window.addEventListener('mouseup', e => { if (e.button === 1) panning = null; });
+window.addEventListener('pointerup', e => {
+  if (!panning || e.pointerId !== panning.id) return;
+  justPanned = panning.moved; panning = null; cv.classList.remove('grabbing');
+  setTimeout(() => { justPanned = false; }, 0);
+});
+function zoomBy(factor) {
+  if (!state.dev) return;
+  const W = cv.width / (window.devicePixelRatio || 1), H = cv.height / (window.devicePixelRatio || 1);
+  const before = toW(W / 2, H / 2);
+  state.view.s = Math.min(Math.max(state.view.s * factor, 1), 1e6);
+  const after = toW(W / 2, H / 2);
+  state.view.ox += (after[0] - before[0]) * state.view.s;
+  state.view.oy -= (after[1] - before[1]) * state.view.s;
+  draw();
+}
+$('zoomIn').addEventListener('click', () => zoomBy(1.3));
+$('zoomOut').addEventListener('click', () => zoomBy(1 / 1.3));
 $('fitview').addEventListener('click', () => { fit(); draw(); });
 $('pairOne').addEventListener('click', () => { state.pairMode = 'one'; draw(); });
 $('pairUnit').addEventListener('click', () => { state.pairMode = 'unit'; draw(); });
@@ -882,11 +921,12 @@ cv.addEventListener('mousedown', e => {
   const r = cv.getBoundingClientRect();
   const w = toW(e.clientX - r.left, e.clientY - r.top);
   const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
-  if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push({ ...s, allowed: false });
+  const old = state.draft.points.find(x => dist(x.p, s.p) < 1e-9);
+  if (old) old.allowed = false; else state.draft.points.push({ ...s, allowed: false });
   syncUI(); draw();
 });
 cv.addEventListener('click', e => {
-  if (!state.dev) return;
+  if (!state.dev || justPanned) return;
   const r = cv.getBoundingClientRect();
   const w = toW(e.clientX - r.left, e.clientY - r.top);
   if (state.mode === 'pickTile:cfg' || state.mode === 'pickTile:reg') {
@@ -898,7 +938,9 @@ cv.addEventListener('click', e => {
     if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push(s);
   } else if (state.mode === 'pickPts:reg') {
     const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
-    if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push({ ...s, allowed: true });
+    const old = state.draft.points.find(x => dist(x.p, s.p) < 1e-9);
+    if (old) old.allowed = !old.allowed;       // clicking a picked point again switches it
+    else state.draft.points.push({ ...s, allowed: !state.forbidNext });
   } else if (state.mode === 'pickCenter:derive') {
     const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
     const src = state.configs.find(g => g.id === state.deriveSource);
@@ -935,6 +977,7 @@ $('addCfg').addEventListener('click', () => {
 $('addReg').addEventListener('click', () => {
   if (state.mode !== 'idle') return;
   state.draft = { kind: 'reg', tile: null, points: [], color: nextColor(), label: `Region ${state.regions.length + 1}` };
+  state.forbidNext = false;
   state.mode = 'pickTile:reg';
   syncUI(); draw();
 });
@@ -954,6 +997,7 @@ $('undo').addEventListener('click', () => {
   syncUI(); draw();
 });
 $('reset').addEventListener('click', resetPicks);
+$('forbidToggle').addEventListener('click', () => { state.forbidNext = !state.forbidNext; syncUI(); });
 $('curveToggle').addEventListener('change', draw);
 $('type').addEventListener('change', e => load(e.target.value));
 $('filter').addEventListener('change', fillTypes);
@@ -978,7 +1022,7 @@ function modeText(m) {
     case 'pickTile:cfg': return 'Click the tile that must contain this configuration.';
     case 'pickPts:cfg': return 'Click forced points anywhere in the drawing (vertices, edge midpoints, tile centres). Click Finish when done.';
     case 'pickTile:reg': return 'Click the tile whose boundary defines this region.';
-    case 'pickPts:reg': return 'Left-click a boundary point the tile MAY touch (solid); right-click one it may NOT (open). Click round in order, then Finish.';
+    case 'pickPts:reg': return 'Click round the boundary in order, then Finish. Solid = the tile may touch that point; open = it may not.';
     case 'pickCenter:derive': return 'Click the rotation centre for the derived n-gon.';
     default: return '';
   }
@@ -1095,6 +1139,10 @@ function syncUI() {
   $('finishGroup').disabled = !picking || !state.draft || state.draft.points.length < 1;
   $('cancelGroup').disabled = state.mode === 'idle';
   $('undo').disabled = !state.draft || !state.draft.points.length;
+  $('forbidToggle').hidden = state.mode !== 'pickPts:reg';
+  $('forbidToggle').classList.toggle('on', !!state.forbidNext);
+  $('forbidToggle').setAttribute('aria-pressed', String(!!state.forbidNext));
+  $('forbidToggle').textContent = state.forbidNext ? 'Next point: forbidden (open ○)' : 'Next point: allowed (solid ●)';
 
   renderGroups();
   fillTestSelects();
@@ -1430,18 +1478,19 @@ function familyTest(cfgPoints, regPoints, opts) {
            configShapeRigid: configShapeWorst < 1e-9, configShapeWorst, examples };
 }
 
-$('export').addEventListener('click', () => {
+function proofRecord() {
   const t = TY[state.id];
-  const rec = {
+  return {
+    format: 'banMonoTest-proof-1',
     type: '#' + state.id, symbol: t.sym, orbifold: t.orb, k: t.k, n: t.n, verdict: t.v,
     configurations: state.configs.map(g => ({
-      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null,
+      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null, tileCentre: g.tile ? g.tile.ctr : null,
       points: g.points.map((s, i) => ({ i: i + 1, kind: s.kind, orbit: s.orbit, xy: s.p, addr: s.addr || null })),
       pairwiseDistances: g.points.flatMap((a, i) => g.points.slice(i + 1).map((b, j) =>
         ({ pair: `${i + 1}-${i + j + 2}`, d: +dist(a.p, b.p).toFixed(6) }))),
     })),
     regions: state.regions.map(g => ({
-      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null,
+      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null, tileCentre: g.tile ? g.tile.ctr : null,
       points: g.points.map((s, i) => ({ i: i + 1, kind: s.kind, orbit: s.orbit, xy: s.p, allowed: s.allowed, addr: s.addr || null })),
       allowedPoints: g.points.filter(s => s.allowed).map(s => ({ kind: s.kind, orbit: s.orbit, xy: s.p })),
       forbiddenPoints: g.points.filter(s => !s.allowed).map(s => ({ kind: s.kind, orbit: s.orbit, xy: s.p })),
@@ -1449,9 +1498,80 @@ $('export').addEventListener('click', () => {
     lastTest: state.lastTest,
     note: 'Each configuration is a set of points forced to lie in one tile -- OR, for a derived n-gon (see its label), points with no addr constructed by rotating a segment n-fold about a chosen centre, per the "radius" argument (reference_radius_argument.md). Each region traces a restricted tile\'s boundary in click order: allowed points bound a closed edge (the tile may touch them), forbidden ones an open edge (it may not). Any configuration can be tested against any region in the Test section -- they need not be the pair originally picked together. If no isometric copy of a configuration fits inside a region, the two tiles cannot be congruent.',
   };
-  const txt = JSON.stringify(rec, null, 2);
+}
+$('export').addEventListener('click', () => {
+  const txt = JSON.stringify(proofRecord(), null, 2);
   $('out').textContent = txt;
   navigator.clipboard && navigator.clipboard.writeText(txt);
+});
+$('saveRec').addEventListener('click', () => {
+  const txt = JSON.stringify(proofRecord(), null, 2);
+  $('out').textContent = txt;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' }));
+  a.download = `proof-${state.id}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+/* Loading a record back. Each point is re-attached to the drawing's own snap point at that spot
+   (so it gets a fresh combinatorial addr and survives shape edits and the family test); a point
+   with no snap point there -- a derived n-gon's corners -- keeps its coordinates. Tiles are found
+   by orbit and recorded centre. Also reads the older netshape export (containingTileOrbit /
+   configuration / regionBoundary), as kept in program4's impossibles.txt. */
+function snapAt(xy) {
+  let best = null, bd = 1e-4;
+  for (const s of state.dev.snapPoints) { const d = dist(s.p, xy); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
+function tileFor(orbit, centre, pts) {
+  let best = null, bd = Infinity;
+  for (const t of state.dev.complete) {
+    if (orbit != null && t.orbit !== orbit) continue;
+    const d = centre ? dist(t.ctr, centre) : pts.reduce((a, p) => a + dist(t.ctr, p), 0);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+function groupFromRecord(kind, g, label) {
+  const raw = g.points || [];
+  const points = raw.map(q => {
+    const s = snapAt(q.xy);
+    const pt = s ? { ...s } : { p: q.xy, kind: q.kind, orbit: q.orbit, type: ['vertex', 'edgeMid', 'tileCentre'].indexOf(q.kind) };
+    if (kind === 'reg') pt.allowed = q.allowed !== false;
+    return pt;
+  });
+  const derived = raw.length && raw.every(q => !q.addr) && !points.some(pt => pt.addr) && g.tileOrbit == null;
+  return {
+    id: state.nextId++, kind, color: nextColor(), label: g.label || label, points,
+    tile: derived ? null : tileFor(g.tileOrbit, g.tileCentre, points.map(pt => pt.p)),
+  };
+}
+function loadRecord(rec) {
+  const id = String(rec.type || '').replace('#', '').trim();
+  if (!TY[id]) throw new Error(`unknown type "${rec.type}"`);
+  goTo(id);
+  if (!state.dev) throw new Error(`no drawing for type ${id}`);
+  let cfgs = rec.configurations, regs = rec.regions;
+  if (!cfgs && rec.configuration)       // older netshape export: one of each
+    cfgs = [{ label: 'Config 1', tileOrbit: rec.containingTileOrbit, points: rec.configuration }];
+  if (!regs && rec.regionBoundary)
+    regs = [{ label: 'Region 1', tileOrbit: rec.restrictedTileOrbit, points: rec.regionBoundary }];
+  (cfgs || []).forEach((g, i) => state.configs.push(groupFromRecord('cfg', g, `Config ${i + 1}`)));
+  (regs || []).forEach((g, i) => state.regions.push(groupFromRecord('reg', g, `Region ${i + 1}`)));
+  syncUI(); draw();
+  return { configs: (cfgs || []).length, regions: (regs || []).length };
+}
+$('loadRec').addEventListener('click', () => $('loadFile').click());
+$('loadFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const n = loadRecord(JSON.parse(await f.text()));
+    $('verdict').innerHTML = `<div class="verdict v-yes">Loaded ${f.name}: ${n.configs} configuration(s), ${n.regions} region(s). Pick a pair under Test and run it.</div>`;
+  } catch (err) {
+    $('verdict').innerHTML = `<div class="verdict v-no">Couldn't load ${f.name}: ${err.message}</div>`;
+  }
 });
 
 $('savePic').addEventListener('click', () => {
