@@ -14,6 +14,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   display:flex;height:100vh;overflow:hidden}
 #stage{flex:1;position:relative;min-width:0}
 canvas{display:block;width:100%;height:100%;cursor:crosshair}
+a{color:var(--pick)}
 #pair{height:220px;cursor:default;background:#0d0f14;border:1px solid var(--line);border-radius:3px}
 #pairOne.on,#pairUnit.on{border-color:var(--pick);background:#1b2b28}
 #panel{width:390px;flex:none;background:var(--panel);border-left:1px solid var(--line);
@@ -106,6 +107,7 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
     </select>
     <input id="jump" placeholder="go to #id">
   </div>
+  <p class="hint" id="typeLinks"></p>
   <label style="display:flex;align-items:center;gap:7px;margin-top:9px;cursor:pointer">
     <input type="checkbox" id="curveToggle" checked style="width:auto;padding:0">
     <span>Draw edges as orbit curves</span>
@@ -340,6 +342,9 @@ function buildEdgeCurves(d) {
 
 function load(id) {
   state.id = id;
+  if (location.hash.replace('#', '') !== id) history.replaceState(null, '', '#' + id);
+  $('typeLinks').innerHTML = TY[id] && TY[id].v === 'impossible'
+    ? `Proven impossible. <a href="proofs.html#${id}">See the published proof →</a>` : '';
   if (state.edit) endEdit();          // the edit model belongs to the OLD type's disk indexing
   try { state.dev = DD.develop(TY[id].sym, { maxCopies: 160 }); }
   catch (e) { state.dev = null; }
@@ -952,9 +957,18 @@ $('reset').addEventListener('click', resetPicks);
 $('curveToggle').addEventListener('change', draw);
 $('type').addEventListener('change', e => load(e.target.value));
 $('filter').addEventListener('change', fillTypes);
-$('jump').addEventListener('change', e => {
-  const id = e.target.value.replace('#', '').trim();
-  if (TY[id]) { $('filter').value = 'all'; fillTypes(); $('type').value = id; load(id); }
+function goTo(id) {
+  if (!TY[id]) return false;
+  if (![...$('type').options].some(o => o.value === id)) { $('filter').value = 'all'; fillTypes(); }
+  $('type').value = id; load(id);
+  return true;
+}
+$('jump').addEventListener('change', e => goTo(e.target.value.replace('#', '').trim()));
+// builder.html#401 opens type 401, and the address bar always names the current type, so it can
+// be shared or bookmarked; the gallery links here the same way.
+window.addEventListener('hashchange', () => {
+  const id = location.hash.replace('#', '').trim();
+  if (id !== state.id) goTo(id);
 });
 
 /* ---------- groups list UI ---------- */
@@ -2050,7 +2064,9 @@ $('editUndo').addEventListener('click', () => {
 $('editRecenter').addEventListener('click', () => { if (editActive()) { fdFit(); drawFd(); fit(); draw(); } });
 
 window.addEventListener('resize', resize);
+const startId = location.hash.replace('#', '').trim();   // read before fillTypes() rewrites it
 fillTypes();
+goTo(startId);
 resize();
 </script>
 </body>

@@ -80,6 +80,7 @@
     font-size: 12.5px; margin: 8px 0 18px;
   }
   #meta span b { color: var(--text); font-weight: 500; }
+  #meta a { color: var(--accent); }
 
   #img-wrap {
     background: #0d0f14; border: 1px solid var(--border); border-radius: 8px;
@@ -241,6 +242,7 @@ function showDetail(id) {
   if (r.wallpaper_group) metaParts.push(`<span><b>wallpaper</b> ${r.wallpaper_group}</span>`);
   if (r.orbifold) metaParts.push(`<span><b>orbifold</b> ${r.orbifold}</span>`);
   if (r.paper_label) metaParts.push(`<span><b>paper</b> ${r.paper_label}${r.paper_no != null ? ' (fig. ' + r.paper_no + ')' : ''}</span>`);
+  metaParts.push(`<span><a href="builder.html#${r.id}">Open in the proof builder →</a></span>`);
   document.getElementById('meta').innerHTML = metaParts.join('');
 
   const imgWrap = document.getElementById('img-wrap');
