@@ -1,0 +1,50 @@
+name: New impossibility proof
+description: Send in a proof, made with the proof builder, that a type cannot be monohedral.
+title: "Proof for #"
+labels: ["proof submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Build the proof in the [proof builder](https://johndberglund.github.io/banMonoTest/builder.html),
+        then press **Copy proof record (JSON)** and paste it below. Every submission is re-checked before it
+        is added to the record, so don't worry if you're not sure it's complete.
+  - type: input
+    id: type
+    attributes:
+      label: Type number
+      description: The type's id, as shown in the builder's type picker.
+      placeholder: "e.g. 401"
+    validations:
+      required: true
+  - type: textarea
+    id: record
+    attributes:
+      label: Proof record
+      description: Paste the output of "Copy proof record (JSON)".
+      render: json
+    validations:
+      required: true
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: Tests run
+      description: Tick the tests you ran in the builder's Test section.
+      options:
+        - label: "\"Does it fit?\" said the configuration does not fit the region"
+        - label: "\"Test across the deformation family\" said it does not fit for any shape"
+  - type: textarea
+    id: argument
+    attributes:
+      label: The argument in words (optional)
+      description: Explain the argument if it helps, e.g. "one tile contains a Y; the other is bounded by a 30-60-90 triangle, so the Y can't fit."
+  - type: textarea
+    id: picture
+    attributes:
+      label: Picture (optional)
+      description: Drag in the PNG or SVG from "Save picture" if you have one.
+  - type: input
+    id: credit
+    attributes:
+      label: How you'd like to be credited (optional)
+      description: The name to show beside the proof. Leave blank to use your GitHub username.

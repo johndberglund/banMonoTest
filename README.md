@@ -21,8 +21,9 @@ folder with any static web server.
 
 ## Found a new proof?
 
-Use **Copy proof record (JSON)** in the builder, then open an issue and paste or attach the
-record. Each one is re-checked before it is added.
+Use **Copy proof record (JSON)** in the builder, then
+[send it in with the proof form](https://github.com/johndberglund/banMonoTest/issues/new?template=new-proof.yml).
+Each one is re-checked before it is added.
 
 ## License
 
