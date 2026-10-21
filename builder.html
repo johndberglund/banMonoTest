@@ -1,0 +1,2057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>netshape — containment proofs for 2-isohedral types</title>
+<style>
+:root{
+  --bg:#12141a; --panel:#191c24; --line:#2a2f3b; --ink:#e6e9f0; --dim:#98a0b3;
+  --A:#5570c8; --B:#d1913f; --pick:#4ec9a8; --region:#e0576e; --warn:#e0c060;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:13.5px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+  display:flex;height:100vh;overflow:hidden}
+#stage{flex:1;position:relative;min-width:0}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+#pair{height:220px;cursor:default;background:#0d0f14;border:1px solid var(--line);border-radius:3px}
+#pairOne.on,#pairUnit.on{border-color:var(--pick);background:#1b2b28}
+#panel{width:390px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;padding:16px 16px 40px}
+h1{font-size:15px;margin:0 0 3px;font-weight:600;letter-spacing:.01em}
+.sub{color:var(--dim);font-size:11.5px;margin:0 0 14px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--dim);
+  font-weight:600;margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+label{display:block;font-size:11.5px;color:var(--dim);margin:0 0 4px}
+select,input,button{font:inherit;background:#20242e;color:var(--ink);
+  border:1px solid var(--line);border-radius:3px;padding:6px 9px}
+select,input{width:100%}
+button{cursor:pointer;width:100%;margin-top:6px}
+button:hover:not(:disabled){background:#2a3040;border-color:#3d4557}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.go{background:#2b4a8a;border-color:#3a5da5}
+button.go:hover:not(:disabled){background:#33569c}
+button.warn{background:#6d2f3c;border-color:#8a3c4c}
+button.small{width:auto;padding:3px 8px;font-size:11px;margin:0;flex:none}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--pick);outline-offset:1px}
+.row{display:flex;gap:6px}.row>*{flex:1}
+.step{padding:7px 9px;border:1px solid var(--line);border-radius:3px;font-size:12px;
+  background:#1d212a;color:var(--dim)}
+.step.on{border-color:var(--pick);background:#1b2b28;color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:12px;
+  font-variant-numeric:tabular-nums}
+th{text-align:left;color:var(--dim);font-weight:500;font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.07em;padding:0 0 4px;border-bottom:1px solid var(--line)}
+td{padding:3px 0;border-bottom:1px solid #21252f}
+td:not(:first-child){text-align:right}
+.verdict{padding:10px 12px;border-radius:3px;margin-top:10px;font-size:12.5px;line-height:1.5}
+.v-no{background:#2a1a20;border:1px solid #6d2f3c;color:#ffb3c0}
+.v-yes{background:#1a2a22;border:1px solid #2f6d4c;color:#a8e6c4}
+.v-idk{background:#2a2620;border:1px solid #6d5a2f;color:#e6d3a8}
+pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9px;
+  font-size:10.5px;overflow-x:auto;max-height:190px;color:var(--dim);white-space:pre-wrap;
+  word-break:break-all}
+.hint{font-size:11px;color:var(--dim);margin:6px 0 0}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:2px;
+  background:#20242e;border:1px solid var(--line);color:var(--dim);margin-left:5px}
+#hud{position:absolute;left:12px;top:12px;background:rgba(18,20,26,.9);
+  border:1px solid var(--line);border-radius:3px;padding:7px 11px;font-size:11.5px;
+  color:var(--dim);pointer-events:none;font-variant-numeric:tabular-nums}
+#hud b{color:var(--ink)}
+/* Fundamental-domain editor pane (Tegula-style): its own canvas and view transform, so the main
+   canvas's pan/zoom and picking are untouched. */
+#fdwrap{position:absolute;left:12px;bottom:12px;background:rgba(18,20,26,.94);
+  border:1px solid var(--line);border-radius:4px;padding:8px}
+#fd{width:300px;height:300px;cursor:default;border-radius:2px}
+/* FIXED height, and it scrolls if it has to. The panel is anchored by its BOTTOM edge, so any
+   growth in this read-out lifts the canvas with it -- and it does grow the instant a drag
+   starts, when the "(changed)" marker appears. That shoved the whole domain 16px out from
+   under the cursor on the first frame of every drag. */
+#fdhud{font-size:11px;color:var(--dim);margin-top:6px;max-width:300px;line-height:1.45;height:96px;overflow-y:auto;
+  font-variant-numeric:tabular-nums}
+#fdhud b{color:var(--ink)}
+#fdhud .bad{color:#e0576e}
+#fdhud .good{color:#4ec9a8}
+.grouplabel{font-size:11px;color:var(--dim);margin:10px 0 4px}
+.group{border:1px solid var(--line);border-left-width:3px;border-radius:3px;padding:8px 10px;
+  margin-bottom:8px;background:#1d212a}
+.group.draft{opacity:.85;border-style:dashed}
+.group .grow{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.group .grow input[type=text]{flex:1;padding:3px 6px;font-size:12px;margin-top:0}
+.swatch{width:11px;height:11px;border-radius:3px;flex:none}
+.group table{font-size:11px;margin-top:4px}
+.group .derive{margin-top:6px}
+.group .derive input{padding:4px 6px;font-size:11px;margin-top:0}
+.warnline{color:var(--warn)}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas><div id="hud">—</div>
+  <div id="fdwrap" hidden><canvas id="fd" width="300" height="300"></canvas><div id="fdhud">—</div></div>
+</div>
+
+<div id="panel">
+  <h1>netshape</h1>
+  <p class="sub">Containment proofs: configurations forced into tiles, tested against regions the
+  other tile cannot leave. Build as many of each as you need.</p>
+
+  <label for="type">Type</label>
+  <select id="type"></select>
+  <div class="row" style="margin-top:6px">
+    <select id="filter">
+      <option value="unknown">unknown only</option>
+      <option value="all">all types</option>
+      <option value="impossible">impossible</option>
+      <option value="possible">possible</option>
+    </select>
+    <input id="jump" placeholder="go to #id">
+  </div>
+  <label style="display:flex;align-items:center;gap:7px;margin-top:9px;cursor:pointer">
+    <input type="checkbox" id="curveToggle" checked style="width:auto;padding:0">
+    <span>Draw edges as orbit curves</span>
+  </label>
+  <p class="hint">Scroll to zoom (centred on cursor); middle-drag to pan. Some types' tiles of
+  interest sit outside the default view — pan/zoom to find them.</p>
+  <button id="fitview">Reset view</button>
+
+  <h2>The two tiles</h2>
+  <canvas id="pair" aria-label="The two tile classes drawn on their own"></canvas>
+  <div class="row" style="margin-top:6px">
+    <button id="pairOne" class="small">One of each</button>
+    <button id="pairUnit" class="small">In proportion</button>
+  </div>
+  <p class="hint" id="pairHint"></p>
+
+  <h2>Shape</h2>
+  <div class="step" id="editStatus">The drawing you get is one realization of many. Open the editor
+  to move the fundamental domain's corners and reshape the tiles.</div>
+  <button id="editToggle">Edit shape</button>
+  <div id="editBtns" hidden>
+    <div class="grouplabel">What a drag changes</div>
+    <div style="display:flex;gap:6px">
+      <button id="modeDim" style="flex:1">Dimensions</button>
+      <button id="modeShape" style="flex:1">Tile shape</button>
+    </div>
+    <p class="hint" id="modeHint">Dimensions: the skeleton — moving these re-derives the side
+    pairings, so the lattice changes. Tile shape: the pairings are held fixed, so the lattice
+    cannot change and only the tiles are reshaped.</p>
+    <button id="editReset">Reset to canonical</button>
+    <button id="editUndo">Undo drag</button>
+    <button id="editRecenter">Recentre / resize</button>
+  </div>
+
+  <h2>Build</h2>
+  <div class="step" id="buildStatus">Click "+ Configuration" or "+ Region" to start a new group.</div>
+  <div class="row" style="margin-top:8px">
+    <button id="addCfg" class="go">+ Configuration</button>
+    <button id="addReg" class="go">+ Region</button>
+  </div>
+  <button id="finishGroup" class="go" disabled>Finish current group</button>
+  <div class="row">
+    <button id="cancelGroup" disabled>Cancel</button>
+    <button id="undo" disabled>Undo last point</button>
+  </div>
+  <button id="reset">Reset everything</button>
+  <p class="hint" id="pickHint">Left-click a config point or an allowed region point. Right-click
+  a region point the tile may NOT touch.</p>
+
+  <h2>Groups <span class="badge" id="grpn">0 configs, 0 regions</span></h2>
+  <div class="grouplabel">Configurations</div>
+  <div id="cfgList"></div>
+  <div class="grouplabel">Regions</div>
+  <div id="regList"></div>
+
+  <h2>Test</h2>
+  <label for="testCfg">Configuration</label>
+  <select id="testCfg"></select>
+  <label for="testReg" style="margin-top:8px">Region</label>
+  <select id="testReg"></select>
+  <button id="run" class="go" disabled>Does it fit?</button>
+  <button id="runfam" disabled>Test across the deformation family</button>
+  <div id="verdict"></div>
+
+  <h2>Record</h2>
+  <button id="export">Copy proof record (JSON)</button>
+  <button id="savePic">Save picture (PNG)</button>
+  <button id="saveSvg">Save picture (SVG)</button>
+  <pre id="out">—</pre>
+</div>
+
+<script src="js/dsym_geom.js"></script>
+<script src="js/dsym_disk.js"></script>
+<script src="js/dsym_deform.js"></script>
+<script src="js/draw_dsym2.js"></script>
+<script src="js/dsym_types.js"></script>
+<script src="js/tiler_curves.js"></script>
+<script src="js/dsym_edit.js"></script>
+<script>
+'use strict';
+const TY = window.DSYM_TYPES, DD = window.DrawDsym, DF = window.DsymDeform,
+      DG = window.DsymGeom, DK = window.DsymDisk, TC = window.TilerCurves;
+const EDGE_PALETTE = ['#ff6f6f', '#6fd3ff', '#c9ff6f', '#ffcf6f', '#d18cff',
+                       '#6fffb0', '#ff9f4f', '#4fc9ff', '#ff6fc0', '#c0ff4f'];
+// Assigned to configuration/region GROUPS (distinct from EDGE_PALETTE, which colours edge orbits),
+// one per group in creation order, so a person looking at the canvas or an exported SVG can tell
+// "configuration 2" from "region 1" from "the n-gon derived off configuration 2" purely by colour.
+const GROUP_PALETTE = ['#4ec9a8', '#e0576e', '#7fa1ff', '#ffb84d', '#c98cff',
+                        '#6fffb0', '#ff6fc0', '#4fc9ff', '#ffe066', '#9fffcf'];
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// Multiple configuration/region GROUPS, not just one of each -- John, 2026-08-16: "I want to be
+// able to do more than always A once and B once." Each group is `{id, kind:'cfg'|'reg', tile,
+// points, color, label}`. `points` holds the same snap-point shape draw_dsym2.js already produces
+// (`{p,kind,orbit,addr}`, region points additionally `{allowed}`), so fits()/familyTest() etc. are
+// unchanged -- they just take an explicit points array instead of reading one global state.cfg /
+// state.region. `draft` is the group currently being built (not yet in `configs`/`regions`).
+// `mode` replaces the old fixed 4-step phase counter with a small state machine that can be
+// re-entered any number of times: idle -> pickTile:{cfg,reg} -> pickPts:{cfg,reg} -> idle, plus a
+// side path pickCenter:derive for the n-fold-rotation helper (see regularNgonPoints below).
+let state = {
+  id: null, dev: null, view: { s: 1, ox: 0, oy: 0 },
+  mode: 'idle', draft: null,
+  configs: [], regions: [], nextId: 1,
+  deriveSource: null, deriveN: null,
+  testCfgId: null, testRegId: null, lastTest: null,
+  hover: null,
+};
+
+/* ---------- type list ---------- */
+function fillTypes() {
+  const f = $('filter').value || 'unknown', sel = $('type');
+  const ids = Object.keys(TY).filter(i => f === 'all' || TY[i].v === f)
+                            .sort((a, b) => +a - +b);
+  sel.innerHTML = ids.map(i =>
+    `<option value="${i}">#${i} — ${TY[i].orb || '?'} — ${TY[i].k},${TY[i].n} — ${TY[i].v || '?'}</option>`).join('');
+  if (ids.length) load(ids[0]);
+}
+
+// Which of J/U/S/I an edge orbit gets -- tiler_core's engine reads this straight off its own
+// net-edge data (curCfg.edgeSym, see tilerTest.js), but the DSym engine here has no such field,
+// so it's derived from the actual developed symmetry GROUP instead. A physical edge P0->P1's
+// local stabilizer (the group elements g with {g(P0),g(P1)} = {P0,P1}) is, for a discrete planar
+// group, always trivial or order 2 -- and a non-identity element of it must be exactly one of:
+//   - a reflection FIXING both endpoints (mirror through the line the edge itself lies on,
+//     forcing the curve straight since it must equal its own reflection)         -> I
+//   - a reflection swapping the endpoints (mirror through the perpendicular bisector) -> U
+//   - a rotation swapping the endpoints (must be 180 deg about the midpoint, the only rotation
+//     that can swap two distinct points and square to the identity)              -> S
+// No such element at all -> J (no constraint; draw whatever motif). dev.copies already holds a
+// large, BFS-closed sample of the full group (same one develop() used to place every tile), so
+// this is exact wherever the sample reaches the relevant stabilizer element -- which, for a
+// discrete group, is always among the shortest words, so maxCopies:160 comfortably reaches it.
+// fixRefl must be checked FIRST: when an edge sits at a dihedral point (its midpoint also lies
+// on a second, perpendicular mirror), BOTH swapRefl and swapRot are true alongside it -- their
+// composition is forced to be the line-fixing reflection (an orientation-reversing map fixing
+// both endpoints has no other identity), so fixRefl is never a coincidence when it appears
+// together with a swap, and I is the strictly stronger constraint (the edge cannot bulge at
+// all, regardless of what else its stabilizer contains). Missing this order misclassified #64's
+// long mirror-line edge and three of #216's edges as U.
+function classifyEdgeType(dev, P0, P1) {
+  const eq = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
+  let swapRefl = false, swapRot = false, fixRefl = false;
+  for (const T of dev.copies) {
+    const det = T[0] * T[4] - T[1] * T[3];
+    const Q0 = DD.apply(T, P0), Q1 = DD.apply(T, P1);
+    if (eq(Q0, P1) && eq(Q1, P0)) { if (det < 0) swapRefl = true; else swapRot = true; continue; }
+    if (det < 0 && eq(Q0, P0) && eq(Q1, P1)) fixRefl = true;
+  }
+  return fixRefl ? 'I' : swapRefl ? 'U' : swapRot ? 'S' : 'J';
+}
+
+// One curve per edge ORBIT (union-find over which tile edges are congruent copies of each
+// other), traced from curve_examples.svg's motif library in tiler_curves.js -- same look as
+// tilerTest.js / edge_quiz.html use for edges elsewhere in this codebase. Each physical edge is
+// drawn once (dedup by its endpoints), not once per adjacent tile. I orbits draw nothing (the
+// straight tile boundary already shows them correctly), matching tilerTest.js's convention.
+function buildEdgeCurves(d) {
+  if (!TC || !d) return null;
+  const orbitRep = new Map();       // orbit -> one representative instance [P0, P1]
+  for (const t of d.complete) if (t.edgeOrbits) {
+    const m = t.pts.length;
+    for (let i = 0; i < m; i++) {
+      const o = t.edgeOrbits[i];
+      if (o != null && !orbitRep.has(o)) orbitRep.set(o, [t.pts[i], t.pts[(i + 1) % m]]);
+    }
+  }
+  if (!orbitRep.size) return null;
+  const orbitType = new Map();
+  for (const [o, [P0, P1]] of orbitRep) orbitType.set(o, classifyEdgeType(d, P0, P1));
+  // Motif variant: only non-I orbits consume a demo-motif slot, numbered in stable rep order --
+  // exactly assignCurveVariants in tilerTest.js -- so different orbits get visibly different marks.
+  const orbitIndex = new Map();
+  [...orbitRep.keys()].filter(o => orbitType.get(o) !== 'I').sort((a, b) => a - b)
+    .forEach((o, i) => orbitIndex.set(o, i));
+  const canonCache = new Map();
+  const canonOf = o => { if (!canonCache.has(o))
+      canonCache.set(o, TC.testCurve(orbitType.get(o), orbitIndex.get(o) || 0));
+    return canonCache.get(o); };
+  const kp = p => Math.round(p[0] / 1e-6) + ',' + Math.round(p[1] / 1e-6);
+  const ek = (a, b) => { const A = kp(a), B = kp(b); return A < B ? A + '|' + B : B + '|' + A; };
+
+  // Which MIRROR of the canonical curve each physical instance gets, so a J motif's
+  // handedness, a U fold's bulge side, and an S fold's chirality are all placed by the ACTUAL
+  // symmetry group rather than by whichever tile the edge-orbit search happened to visit first
+  // (which is what made #70's U edges face inconsistently). For the orbit's representative
+  // instance (R0,R1), every T in dev.copies gives another instance (T(R0),T(R1)) of the SAME
+  // physical edge somewhere in the tiling; the first T to reach a given physical edge (BFS order,
+  // starting at the identity) fixes its code deterministically. Since T is applied directly to
+  // (R0,R1) in that fixed order, point order is never swapped -- only whether T is orientation-
+  // reversing matters, so the code is just that sign (bit 2 of the J/U/S/I Klein-4 map). Verified
+  // against #70: the two "code" values correspond EXACTLY to which of the two neighbouring tile
+  // orbits sits on which side, every time -- not an arbitrary per-instance choice. This also
+  // explains why S folds should alternate: some instances are related to the representative by an
+  // orientation-preserving copy (translation/rotation), others by an orientation-reversing one (a
+  // reflection or -- for orbifolds with no mirrors at all, like 22x -- a glide), and the two give
+  // opposite chirality.
+  const codeOf = new Map();     // orbit -> Map(physKey -> {P0,P1,code})
+  for (const [o, [R0, R1]] of orbitRep) {
+    if (orbitType.get(o) === 'I') continue;
+    const seenAt = new Map();
+    for (const T of d.copies) {
+      const Q0 = DD.apply(T, R0), Q1 = DD.apply(T, R1), key = ek(Q0, Q1);
+      if (seenAt.has(key)) continue;
+      const det = T[0] * T[4] - T[1] * T[3];
+      seenAt.set(key, { P0: Q0, P1: Q1, code: det < 0 ? 2 : 0 });
+    }
+    codeOf.set(o, seenAt);
+  }
+
+  const seen = new Set(), edges = [];
+  for (const t of d.complete) {
+    if (!t.edgeOrbits) continue;
+    const m = t.pts.length;
+    for (let i = 0; i < m; i++) {
+      const P0 = t.pts[i], P1 = t.pts[(i + 1) % m], orb = t.edgeOrbits[i];
+      if (orb == null || orbitType.get(orb) === 'I') continue;
+      const key = ek(P0, P1);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Rare fallback (a handful of edges in a few types) when the BFS sample of the group
+      // didn't reach this exact instance: fall back to this tile's own order, uncorrected --
+      // same behaviour as before this fix, not a crash or a dropped edge.
+      const info = codeOf.get(orb).get(key) || { P0, P1, code: 0 };
+      const mapped = TC.applyMap(canonOf(orb), info.code);
+      edges.push({ orbit: orb, pts: TC.mapToEdge(mapped, info.P0, info.P1, false) });
+    }
+  }
+  return { edges, orbitIndex };
+}
+
+function load(id) {
+  state.id = id;
+  if (state.edit) endEdit();          // the edit model belongs to the OLD type's disk indexing
+  try { state.dev = DD.develop(TY[id].sym, { maxCopies: 160 }); }
+  catch (e) { state.dev = null; }
+  state.edgeCurves = buildEdgeCurves(state.dev);
+  resetPicks();
+  fit();
+  draw();
+}
+function resetPicks() {
+  state.mode = 'idle'; state.draft = null;
+  state.configs = []; state.regions = [];
+  state.nextId = 1; state.deriveSource = null; state.deriveN = null;
+  state.lastTest = null; state.hover = null;
+  $('verdict').innerHTML = ''; $('out').textContent = '—';
+  syncUI();
+}
+
+/* ---------- view ---------- */
+function fit() {
+  const d = state.dev; if (!d) return;
+  const R = cv.width / (window.devicePixelRatio || 1), H = cv.height / (window.devicePixelRatio || 1);
+  let mx = 0;
+  for (const t of d.complete) for (const p of t.pts) mx = Math.max(mx, Math.abs(p[0]), Math.abs(p[1]));
+  const span = Math.min(mx * 0.62, 4) || 1;
+  state.view.s = Math.min(R, H) / (2 * span);
+  state.view.ox = R / 2; state.view.oy = H / 2;
+}
+const toS = p => [state.view.ox + p[0] * state.view.s, state.view.oy - p[1] * state.view.s];
+const toW = (x, y) => [(x - state.view.ox) / state.view.s, (state.view.oy - y) / state.view.s];
+
+function resize() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fit(); draw();
+}
+
+/* ---------- geometry helpers ---------- */
+function inPoly(p, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if (((a[1] > p[1]) !== (b[1] > p[1])) &&
+        (p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+  }
+  return c;
+}
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function tileAt(w) { for (const t of state.dev.complete) if (inPoly(w, t.pts)) return t; return null; }
+function nearestSnap(w, maxd) {
+  let best = null, bd = maxd;
+  for (const s of state.dev.snapPoints) { const d = dist(w, s.p); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
+function isIdentity(T) {
+  return Math.abs(T[0] - 1) < 1e-9 && Math.abs(T[1]) < 1e-9 && Math.abs(T[2]) < 1e-9 &&
+         Math.abs(T[3]) < 1e-9 && Math.abs(T[4] - 1) < 1e-9 && Math.abs(T[5]) < 1e-9;
+}
+// TRUE rotational order of the stabilizer at point p -- 360 / (smallest rotation angle fixing
+// p), NOT "does some rotation fix it" (a point on a plain 2-fold centre and one on a 6-fold
+// centre both pass THAT test) and NOT a tile's vertex count (which is what produced false
+// "radius argument" proofs on #381/#382 in the CLI tooling before this was fixed there -- see
+// engine/_dev_isohedral/radius_v4.js). Ported here so the derive-n-gon helper below can offer the
+// same auto-detected n a person would get by hand.
+function rotationOrderAt(p, eps) {
+  eps = eps || 1e-6;
+  let minAngle = null;
+  for (let i = 1; i < state.dev.copies.length; i++) {
+    const T = state.dev.copies[i];
+    if (isIdentity(T)) continue;
+    if (dist(DD.apply(T, p), p) > eps) continue;
+    if (T[0] * T[4] - T[1] * T[3] <= 0) continue;      // reflection, not a rotation
+    let ang = Math.atan2(T[3], T[0]);
+    if (ang < 0) ang += 2 * Math.PI;
+    if (ang < 1e-9) continue;
+    if (minAngle === null || ang < minAngle) minAngle = ang;
+  }
+  return minAngle === null ? null : Math.round((2 * Math.PI) / minAngle);
+}
+// n points of a regular n-gon of circumradius r about `center`, in "canonical" phase (one vertex
+// at angle 0). The rotation's PHASE is never pinned by the radius argument -- only its radius is
+// forced (see reference_radius_argument.md) -- and the fit test below searches all rotations of
+// whatever is handed to it, so a fixed starting phase costs nothing.
+function regularNgonPoints(center, r, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const th = 2 * Math.PI * i / n;
+    out.push({ p: [center[0] + r * Math.cos(th), center[1] + r * Math.sin(th)], kind: 'derived', orbit: null, addr: null });
+  }
+  return out;
+}
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function nextColor() { return GROUP_PALETTE[(state.configs.length + state.regions.length) % GROUP_PALETTE.length]; }
+// Which group (if any) "owns" tile t for drawing purposes -- the in-progress draft first (so a
+// tile just clicked highlights immediately), then finished configs, then finished regions. A tile
+// can only visually belong to one group at a time; this is a display convenience, not a claim
+// that no other group could also reference it.
+function tileGroupColor(t) {
+  if (state.draft && state.draft.tile === t) return state.draft.color;
+  for (const g of state.configs) if (g.tile === t) return g.color;
+  for (const g of state.regions) if (g.tile === t) return g.color;
+  return null;
+}
+
+// Darkens a group colour for the SOLID TILE FILL ONLY -- John's own hand edit of netshape-31.svg
+// (2026-08-24): darken the config/region tile's fill so the bright reference lines and hatch
+// drawn ON TOP of it (still full-brightness g.color -- unchanged) stand out, while leaving the
+// surrounding background tiles' colour alone. Same hue and saturation as the source colour, just
+// pulled down to ~35% lightness -- measured directly off his edit: #4ec9a8->#298c72 and
+// #e0576e->#981b31 both land within 0.5% of L=35 despite different starting lightness (54.7 and
+// 61.0), so this targets an absolute L rather than a fixed darkening ratio.
+function darkenFill(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let h = 0, s = 0;
+  if (max !== min) {
+    const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  const L = 0.35;
+  const q = L < 0.5 ? L * (1 + s) : L + s - L * s, p = 2 * L - q;
+  const hue2rgb = (p, q, t) => { if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t; if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6; return p; };
+  const to255 = x => Math.round(x * 255).toString(16).padStart(2, '0');
+  return '#' + to255(hue2rgb(p, q, h + 1 / 3)) + to255(hue2rgb(p, q, h)) + to255(hue2rgb(p, q, h - 1 / 3));
+}
+
+/* ---------- drawing ---------- */
+// Round a point to a stable key so a curve's own endpoints (computed by mapping the canonical
+// curve into world space) can be matched back to the tile vertices that generated them, even
+// though they're two independently-computed floating point values for the "same" point.
+const ptKey = p => Math.round(p[0] / 1e-6) + ',' + Math.round(p[1] / 1e-6);
+
+// John, 2026-08-14: curves were drawn as a SEPARATE overlay on top of the straight tile polygon,
+// so the true (possibly bulging) edge and the straight edge both showed at once, offset from each
+// other. Build a lookup from tile-vertex-pair -> the actual curve path between them (keyed both
+// directions, since a curve is computed once per physical edge but every tile walks its own edges
+// in its own winding order), so tile polygons can be traced along their REAL boundary.
+function curveEdgeMap(ec) {
+  const map = new Map();
+  if (!ec) return map;
+  for (const e of ec.edges) {
+    const pts = e.pts;
+    const k0 = ptKey(pts[0]), k1 = ptKey(pts[pts.length - 1]);
+    if (!map.has(k0 + '|' + k1)) map.set(k0 + '|' + k1, pts);
+    if (!map.has(k1 + '|' + k0)) map.set(k1 + '|' + k0, pts.slice().reverse());
+  }
+  return map;
+}
+// The path from world point a to world point b along its edge -- the matched curve if this edge
+// has one (a J/U/S orbit), otherwise just the straight [a,b] (I orbits, or curves off/unavailable).
+function edgePath(a, b, curveMap) {
+  return curveMap.get(ptKey(a) + '|' + ptKey(b)) || [a, b];
+}
+// The tile's true boundary (curved where the edge has one) as a flat list of WORLD points.
+function tileBoundaryWorldPts(pts, curveMap) {
+  const m = pts.length, out = [];
+  for (let i = 0; i < m; i++) {
+    const path = edgePath(pts[i], pts[(i + 1) % m], curveMap);
+    for (let k = (i > 0 ? 1 : 0); k < path.length; k++) out.push(path[k]);
+  }
+  return out;
+}
+
+// Diagonal-line hatch inside a screen-space polygon, so the tiling underneath the region stays
+// visible (John, 2026-08-14: "shade the region with lines, so we can see the tiling underneath").
+function hatchPolygon(ctx, screenPts, opts) {
+  const spacing = (opts && opts.spacing) || 9, color = (opts && opts.color) || 'rgba(224,87,110,.55)',
+        lineWidth = (opts && opts.lineWidth) || 1.4;
+  const region = new Path2D();
+  screenPts.forEach((p, i) => i ? region.lineTo(p[0], p[1]) : region.moveTo(p[0], p[1]));
+  region.closePath();
+  ctx.save();
+  ctx.clip(region);
+  const xs = screenPts.map(p => p[0]), ys = screenPts.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const diag = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) || 1;
+  ctx.translate(cx, cy); ctx.rotate(Math.PI / 4);
+  ctx.strokeStyle = color; ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  for (let x = -diag; x <= diag; x += spacing) { ctx.moveTo(x, -diag); ctx.lineTo(x, diag); }
+  ctx.stroke();
+  ctx.restore();
+}
+
+const pointPickModes = new Set(['pickPts:cfg', 'pickPts:reg', 'pickCenter:derive']);
+
+function draw() {
+  const W = cv.width / (window.devicePixelRatio || 1), H = cv.height / (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#12141a'; ctx.fillRect(0, 0, W, H);
+  const d = state.dev;
+  if (!d) { ctx.fillStyle = '#98a0b3'; ctx.font = '14px system-ui';
+            ctx.fillText('no drawing for this type', 20, 30); return; }
+  const orbits = [...new Set(d.complete.map(t => t.orbit))].sort((a, b) => a - b);
+  const curvesOn = state.edgeCurves && $('curveToggle').checked;
+  const curveMap = curvesOn ? curveEdgeMap(state.edgeCurves) : new Map();
+  for (const t of d.complete) {
+    const gcol = tileGroupColor(t);
+    const boundary = curvesOn ? tileBoundaryWorldPts(t.pts, curveMap) : t.pts;
+    ctx.beginPath();
+    boundary.forEach((p, i) => { const q = toS(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+    ctx.closePath();
+    ctx.fillStyle = gcol ? darkenFill(gcol) : (orbits.indexOf(t.orbit) === 0 ? '#3d4f8f' : '#8a6330');
+    ctx.globalAlpha = gcol ? 0.95 : 0.5;
+    ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = gcol ? '#f0f3f8' : '#0d0f14';
+    ctx.lineWidth = gcol ? 2 : 1; ctx.stroke();
+  }
+  // edge-orbit colour coding: now drawn EXACTLY along the same boundary traced above (not offset
+  // from it), so it reads as "this edge is orbit X" rather than a second, slightly different line.
+  if (curvesOn) {
+    for (const e of state.edgeCurves.edges) {
+      const col = EDGE_PALETTE[state.edgeCurves.orbitIndex.get(e.orbit) % EDGE_PALETTE.length];
+      ctx.beginPath();
+      e.pts.forEach((p, i) => { const q = toS(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); });
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+  }
+  // snap dots, only while picking points
+  if (pointPickModes.has(state.mode)) {
+    for (const s of d.snapPoints) {
+      const q = toS(s.p);
+      if (q[0] < -8 || q[1] < -8 || q[0] > W + 8 || q[1] > H + 8) continue;
+      ctx.beginPath(); ctx.arc(q[0], q[1], 2.2, 0, 7);
+      ctx.fillStyle = ['#7fd1ff', '#c9a0ff', '#ffd479'][s.type];
+      ctx.globalAlpha = 0.65; ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  // region groups: a diagonal HATCH instead of a solid fill, so the tiling underneath stays
+  // legible, plus a bold outline -- solid where both endpoints are allowed, dashed (open
+  // interval) the moment either end is a point the tile may not touch. Each group in its own
+  // colour; the in-progress draft (if a region) renders exactly like a finished one.
+  const regionGroups = state.regions.concat(state.draft && state.draft.kind === 'reg' ? [state.draft] : []);
+  for (const g of regionGroups) {
+    if (g.points.length > 2) {
+      hatchPolygon(ctx, g.points.map(s => toS(s.p)), { spacing: 9, color: hexToRgba(g.color, 0.55), lineWidth: 1.6 });
+    }
+    if (g.points.length > 1) {
+      const n = g.points.length, segs = n > 2 ? n : n - 1;
+      for (let i = 0; i < segs; i++) {
+        const a = g.points[i], b = g.points[(i + 1) % n];
+        const qa = toS(a.p), qb = toS(b.p);
+        ctx.beginPath(); ctx.moveTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]);
+        ctx.setLineDash(a.allowed && b.allowed ? [] : [7, 5]);
+        ctx.strokeStyle = g.color; ctx.lineWidth = 3.5; ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+  }
+  // configuration groups, star-connected to their tile's own centre: solid lines if the centre
+  // is itself one of the forced points (so the lines ARE part of the required configuration),
+  // dotted if it's just a drawing aid to fan the points out. Derived groups (no tile -- an n-gon
+  // built by the rotate helper) skip the star entirely and just show their points.
+  const cfgGroups = state.configs.concat(state.draft && state.draft.kind === 'cfg' ? [state.draft] : []);
+  for (const g of cfgGroups) {
+    if (!g.tile || !g.points.length) continue;
+    const hub = g.tile.ctr, qHub = toS(hub);
+    const hubPicked = g.points.some(s => dist(s.p, hub) < 1e-6);
+    ctx.setLineDash(hubPicked ? [] : [5, 4]);
+    ctx.strokeStyle = g.color; ctx.lineWidth = 3;
+    g.points.forEach(s => {
+      if (dist(s.p, hub) < 1e-6) return;
+      const q = toS(s.p);
+      ctx.beginPath(); ctx.moveTo(qHub[0], qHub[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    if (!hubPicked) {
+      ctx.beginPath(); ctx.arc(qHub[0], qHub[1], 4, 0, 7);
+      ctx.fillStyle = hexToRgba(g.color, 0.55); ctx.fill();
+    }
+  }
+  // region vertices: solid disc if the tile may touch this point, open ring if it may not. Drawn
+  // BEFORE configuration points so that when the two coincide -- common, since they often share a
+  // boundary vertex -- the numbered config dot stays on top and legible.
+  for (const g of regionGroups) g.points.forEach(s => {
+    const q = toS(s.p);
+    ctx.beginPath(); ctx.arc(q[0], q[1], 7.5, 0, 7);
+    ctx.fillStyle = s.allowed ? g.color : '#12141a';
+    ctx.fill();
+    ctx.strokeStyle = g.color; ctx.lineWidth = s.allowed ? 2 : 3; ctx.stroke();
+  });
+  // configuration points -- all forced, so always solid, numbered per-group, large enough to
+  // anchor the eye.
+  for (const g of cfgGroups) g.points.forEach((s, i) => {
+    const q = toS(s.p);
+    ctx.beginPath(); ctx.arc(q[0], q[1], 10, 0, 7);
+    ctx.fillStyle = g.color; ctx.fill();
+    ctx.strokeStyle = '#0d0f14'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#0d0f14'; ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), q[0], q[1]);
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  });
+  if (state.hover && pointPickModes.has(state.mode)) {
+    const q = toS(state.hover.p);
+    ctx.beginPath(); ctx.arc(q[0], q[1], 7, 0, 7);
+    ctx.strokeStyle = '#f0f3f8'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  drawPair();
+}
+
+/* ---------- the two tiles, drawn on their own ----------
+   John, 2026-10-21: "show both tile classes as complete tiles ... If the ratio of q:r is not 1:1,
+   then we could include enough tiles to make a fundamental domain ... Alternately, we could just
+   include two tiles - one from each orbit." In the paper's k_q n_r the tiles occur r k-gons to
+   q n-gons (checked on all 489 types with q != r), so the proportioned patch has q'+r' tiles.
+   Which orbit gets which count is read off the drawing's own tile density, so it needs no
+   k/q pairing convention from the type data. */
+function tileCounts(d) {
+  const orbits = [...new Set(d.complete.map(t => t.orbit))].sort((a, b) => a - b);
+  const rs = d.complete.map(t => Math.hypot(t.ctr[0], t.ctr[1])).sort((a, b) => a - b);
+  const R = rs[Math.floor(rs.length / 2)];
+  const c = new Map(orbits.map(o => [o, 0]));
+  for (const t of d.complete) if (Math.hypot(t.ctr[0], t.ctr[1]) <= R) c.set(t.orbit, c.get(t.orbit) + 1);
+  const ty = TY[state.id] || {}, gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const g = gcd(ty.q || 1, ty.r || 1), x = (ty.q || 1) / g, y = (ty.r || 1) / g;
+  const [A, B] = orbits, est = c.get(A) / Math.max(1, c.get(B));
+  const [nA, nB] = Math.abs(est - x / y) <= Math.abs(est - y / x) ? [x, y] : [y, x];
+  return { A, B, need: new Map([[A, nA], [B, nB]]) };
+}
+// A connected patch of whole tiles with the wanted count per orbit, grown greedily from a tile
+// of the scarcer orbit near the centre, always adding the needed neighbour closest to that first
+// tile -- so a hexagon with six triangles comes out as a hexagon ringed by them, not lopsided.
+function tilePatch(d, need) {
+  const key = p => p[0].toFixed(4) + ',' + p[1].toFixed(4);
+  const byEdge = new Map();
+  d.complete.forEach((t, i) => t.pts.forEach((p, j) => {
+    const a = key(p), b = key(t.pts[(j + 1) % t.pts.length]), k = a < b ? a + '|' + b : b + '|' + a;
+    if (!byEdge.has(k)) byEdge.set(k, []);
+    byEdge.get(k).push(i);
+  }));
+  const nbrs = d.complete.map(() => new Set());
+  for (const list of byEdge.values()) for (const i of list) for (const j of list) if (i !== j) nbrs[i].add(j);
+  const scarce = [...need.entries()].sort((a, b) => a[1] - b[1])[0][0];
+  const order = d.complete.map((t, i) => i)
+    .sort((i, j) => (d.complete[i].orbit !== scarce) - (d.complete[j].orbit !== scarce)
+      || Math.hypot(...d.complete[i].ctr) - Math.hypot(...d.complete[j].ctr));
+  const total = [...need.values()].reduce((a, b) => a + b, 0);
+  for (const start of order.slice(0, 24)) {
+    const left = new Map(need), chosen = [start];
+    left.set(d.complete[start].orbit, left.get(d.complete[start].orbit) - 1);
+    while (chosen.length < total) {
+      const [cx, cy] = d.complete[start].ctr;
+      let best = -1, bd = Infinity;
+      for (const i of chosen) for (const j of nbrs[i]) {
+        if (chosen.includes(j) || !(left.get(d.complete[j].orbit) > 0)) continue;
+        const dd = Math.hypot(d.complete[j].ctr[0] - cx, d.complete[j].ctr[1] - cy);
+        if (dd < bd) { bd = dd; best = j; }
+      }
+      if (best < 0) break;
+      chosen.push(best); left.set(d.complete[best].orbit, left.get(d.complete[best].orbit) - 1);
+    }
+    if (chosen.length === total) return chosen.map(i => d.complete[i]);
+  }
+  return null;
+}
+function drawPair() {
+  const pc = $('pair'), d = state.dev;
+  const dpr = window.devicePixelRatio || 1, W = pc.clientWidth, H = pc.clientHeight;
+  if (pc.width !== Math.round(W * dpr)) { pc.width = Math.round(W * dpr); pc.height = Math.round(H * dpr); }
+  const g = pc.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const mode = state.pairMode || 'one';
+  $('pairOne').classList.toggle('on', mode === 'one');
+  $('pairUnit').classList.toggle('on', mode === 'unit');
+  if (!d || !d.complete.length) { $('pairHint').textContent = ''; return; }
+  if (!state.pair || state.pair.dev !== d || state.pair.id !== state.id) {
+    const tc = tileCounts(d);
+    state.pair = { dev: d, id: state.id, tc,
+      one: tilePatch(d, new Map([[tc.A, 1], [tc.B, 1]])), unit: tilePatch(d, tc.need) };
+  }
+  const { tc } = state.pair, tiles = state.pair[mode];
+  const nA = tc.need.get(tc.A), nB = tc.need.get(tc.B);
+  const sidesOf = o => (d.complete.find(t => t.orbit === o) || { pts: [] }).pts.length;
+  const ratio = `${nA} blue (${sidesOf(tc.A)}-sided) to ${nB} brown (${sidesOf(tc.B)}-sided)`;
+  if (!tiles) { $('pairHint').textContent = `Could not find a connected patch in this drawing. The tiles occur ${ratio}.`; return; }
+  $('pairHint').textContent = mode === 'one'
+    ? `One tile from each class. In the tiling they occur ${ratio}.`
+    : `${nA + nB} tiles in their true proportion: ${ratio}.`;
+  const curvesOn = state.edgeCurves && $('curveToggle').checked;
+  const curveMap = curvesOn ? curveEdgeMap(state.edgeCurves) : new Map();
+  const bounds = tiles.map(t => curvesOn ? tileBoundaryWorldPts(t.pts, curveMap) : t.pts);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const b of bounds) for (const p of b) {
+    x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]);
+  }
+  const s = Math.min((W - 24) / (x1 - x0 || 1), (H - 24) / (y1 - y0 || 1));
+  const ox = W / 2 - s * (x0 + x1) / 2, oy = H / 2 + s * (y0 + y1) / 2;
+  tiles.forEach((t, i) => {
+    g.beginPath();
+    bounds[i].forEach((p, j) => j ? g.lineTo(ox + s * p[0], oy - s * p[1]) : g.moveTo(ox + s * p[0], oy - s * p[1]));
+    g.closePath();
+    g.fillStyle = t.orbit === tc.A ? '#3d4f8f' : '#8a6330'; g.fill();
+    g.strokeStyle = '#e6e9f0'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
+  });
+}
+
+/* ---------- SVG export ----------
+   John, 2026-08-16: "can you do a fix to netshape.html to let it save svg files?" -- a vector
+   twin of the PNG export, built by walking the exact same state the canvas draw() above uses
+   (screen-space, via the same toS() transform), so it matches the current view pixel-for-pixel
+   instead of drifting into a re-implementation. Hatched regions become SVG <pattern> fills
+   (simpler and crisper than replicating the canvas's clip-and-stroke hatch in vector form). */
+function buildSVG() {
+  const W = cv.width / (window.devicePixelRatio || 1), H = cv.height / (window.devicePixelRatio || 1);
+  let defs = '', body = `<rect x="0" y="0" width="${W.toFixed(0)}" height="${H.toFixed(0)}" fill="#12141a"/>`;
+  const d = state.dev;
+  if (d) {
+    const orbits = [...new Set(d.complete.map(t => t.orbit))].sort((a, b) => a - b);
+    const curvesOn = state.edgeCurves && $('curveToggle').checked;
+    const curveMap = curvesOn ? curveEdgeMap(state.edgeCurves) : new Map();
+    for (const t of d.complete) {
+      const gcol = tileGroupColor(t);
+      const boundary = curvesOn ? tileBoundaryWorldPts(t.pts, curveMap) : t.pts;
+      const pts = boundary.map(p => toS(p).map(v => v.toFixed(2)).join(',')).join(' ');
+      const fill = gcol ? darkenFill(gcol) : (orbits.indexOf(t.orbit) === 0 ? '#3d4f8f' : '#8a6330');
+      body += `<polygon points="${pts}" fill="${fill}" fill-opacity="${gcol ? 0.95 : 0.5}" stroke="${gcol ? '#f0f3f8' : '#0d0f14'}" stroke-width="${gcol ? 2 : 1}"/>`;
+    }
+    if (curvesOn) for (const e of state.edgeCurves.edges) {
+      const col = EDGE_PALETTE[state.edgeCurves.orbitIndex.get(e.orbit) % EDGE_PALETTE.length];
+      const dstr = e.pts.map((p, i) => { const q = toS(p); return (i ? 'L' : 'M') + q[0].toFixed(2) + ' ' + q[1].toFixed(2); }).join(' ');
+      body += `<path d="${dstr}" fill="none" stroke="${col}" stroke-width="1.6"/>`;
+    }
+    const regionGroups = state.regions.concat(state.draft && state.draft.kind === 'reg' ? [state.draft] : []);
+    regionGroups.forEach((g, gi) => {
+      if (g.points.length < 3) return;
+      const pid = 'hatch' + gi;
+      defs += `<pattern id="${pid}" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="9" stroke="${g.color}" stroke-opacity="0.55" stroke-width="1.4"/></pattern>`;
+      const pts = g.points.map(s => toS(s.p).map(v => v.toFixed(2)).join(',')).join(' ');
+      body += `<polygon points="${pts}" fill="url(#${pid})"/>`;
+    });
+    for (const g of regionGroups) {
+      if (g.points.length < 2) continue;
+      const n = g.points.length, segs = n > 2 ? n : n - 1;
+      for (let i = 0; i < segs; i++) {
+        const a = g.points[i], b = g.points[(i + 1) % n];
+        const qa = toS(a.p), qb = toS(b.p);
+        const dash = (a.allowed && b.allowed) ? '' : ' stroke-dasharray="7,5"';
+        body += `<line x1="${qa[0].toFixed(2)}" y1="${qa[1].toFixed(2)}" x2="${qb[0].toFixed(2)}" y2="${qb[1].toFixed(2)}" stroke="${g.color}" stroke-width="3.5"${dash}/>`;
+      }
+    }
+    const cfgGroups = state.configs.concat(state.draft && state.draft.kind === 'cfg' ? [state.draft] : []);
+    for (const g of cfgGroups) {
+      if (!g.tile || !g.points.length) continue;
+      const hub = g.tile.ctr, qHub = toS(hub);
+      const hubPicked = g.points.some(s => dist(s.p, hub) < 1e-6);
+      g.points.forEach(s => {
+        if (dist(s.p, hub) < 1e-6) return;
+        const q = toS(s.p);
+        const dash = hubPicked ? '' : ' stroke-dasharray="5,4"';
+        body += `<line x1="${qHub[0].toFixed(2)}" y1="${qHub[1].toFixed(2)}" x2="${q[0].toFixed(2)}" y2="${q[1].toFixed(2)}" stroke="${g.color}" stroke-width="3"${dash}/>`;
+      });
+    }
+    for (const g of regionGroups) g.points.forEach(s => {
+      const q = toS(s.p);
+      const fill = s.allowed ? g.color : '#12141a';
+      body += `<circle cx="${q[0].toFixed(2)}" cy="${q[1].toFixed(2)}" r="7.5" fill="${fill}" stroke="${g.color}" stroke-width="${s.allowed ? 2 : 3}"/>`;
+    });
+    for (const g of cfgGroups) g.points.forEach((s, i) => {
+      const q = toS(s.p);
+      body += `<circle cx="${q[0].toFixed(2)}" cy="${q[1].toFixed(2)}" r="10" fill="${g.color}" stroke="#0d0f14" stroke-width="2"/>`;
+      body += `<text x="${q[0].toFixed(2)}" y="${q[1].toFixed(2)}" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-weight="bold" font-size="12" fill="#0d0f14">${i + 1}</text>`;
+    });
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}">\n<defs>${defs}</defs>\n${body}\n</svg>\n`;
+}
+
+/* ---------- pan & zoom ----------
+   Default fit() centres the view on the origin at a scale tuned for the common case, but some
+   types' orbit-B tile of interest sits well outside that window (#75, #138, #201 and likely
+   others) with no way to reach it. Scroll-wheel zoom (about the cursor) and middle-drag pan let
+   John navigate to whatever tile he needs regardless of type size; they only touch state.view, so
+   the pick handlers below are untouched. */
+cv.addEventListener('wheel', e => {
+  if (!state.dev) return;
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const before = toW(mx, my);
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  state.view.s = Math.min(Math.max(state.view.s * factor, 1), 1e6);
+  const after = toW(mx, my);
+  state.view.ox += (after[0] - before[0]) * state.view.s;
+  state.view.oy -= (after[1] - before[1]) * state.view.s;
+  draw();
+}, { passive: false });
+
+let panning = null;
+cv.addEventListener('mousedown', e => {
+  if (e.button !== 1 || !state.dev) return;
+  e.preventDefault();
+  panning = { x: e.clientX, y: e.clientY, ox: state.view.ox, oy: state.view.oy };
+});
+window.addEventListener('mousemove', e => {
+  if (!panning) return;
+  state.view.ox = panning.ox + (e.clientX - panning.x);
+  state.view.oy = panning.oy + (e.clientY - panning.y);
+  draw();
+});
+window.addEventListener('mouseup', e => { if (e.button === 1) panning = null; });
+$('fitview').addEventListener('click', () => { fit(); draw(); });
+$('pairOne').addEventListener('click', () => { state.pairMode = 'one'; draw(); });
+$('pairUnit').addEventListener('click', () => { state.pairMode = 'unit'; draw(); });
+
+/* ---------- interaction ---------- */
+cv.addEventListener('mousemove', e => {
+  if (!state.dev) return;
+  const r = cv.getBoundingClientRect();
+  const w = toW(e.clientX - r.left, e.clientY - r.top);
+  const hud = $('hud');
+  if (pointPickModes.has(state.mode)) {
+    state.hover = nearestSnap(w, 26 / state.view.s);
+    hud.innerHTML = state.hover
+      ? `<b>${state.hover.kind}</b> · orbit ${state.hover.orbit} · (${state.hover.p[0].toFixed(3)}, ${state.hover.p[1].toFixed(3)})`
+      : `(${w[0].toFixed(3)}, ${w[1].toFixed(3)}) — no snap point near`;
+    draw();
+  } else {
+    hud.textContent = `(${w[0].toFixed(3)}, ${w[1].toFixed(3)})`;
+  }
+});
+cv.addEventListener('contextmenu', e => e.preventDefault());
+// right click while picking a region's points = a point the restricted tile may NOT touch. It
+// still traces the boundary, same as a left click -- only the allowed flag differs.
+cv.addEventListener('mousedown', e => {
+  if (e.button !== 2 || !state.dev || state.mode !== 'pickPts:reg') return;
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  const w = toW(e.clientX - r.left, e.clientY - r.top);
+  const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
+  if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push({ ...s, allowed: false });
+  syncUI(); draw();
+});
+cv.addEventListener('click', e => {
+  if (!state.dev) return;
+  const r = cv.getBoundingClientRect();
+  const w = toW(e.clientX - r.left, e.clientY - r.top);
+  if (state.mode === 'pickTile:cfg' || state.mode === 'pickTile:reg') {
+    const t = tileAt(w); if (!t) return;
+    state.draft.tile = t;
+    state.mode = state.mode === 'pickTile:cfg' ? 'pickPts:cfg' : 'pickPts:reg';
+  } else if (state.mode === 'pickPts:cfg') {
+    const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
+    if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push(s);
+  } else if (state.mode === 'pickPts:reg') {
+    const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
+    if (!state.draft.points.some(x => dist(x.p, s.p) < 1e-9)) state.draft.points.push({ ...s, allowed: true });
+  } else if (state.mode === 'pickCenter:derive') {
+    const s = nearestSnap(w, 26 / state.view.s); if (!s) return;
+    const src = state.configs.find(g => g.id === state.deriveSource);
+    if (src && src.points.length === 2) {
+      const d0 = dist(src.points[0].p, src.points[1].p), r0 = d0 / 2;
+      const n = state.deriveN || rotationOrderAt(s.p);
+      // n=2 is a real, common rotation order (e.g. *442's third branch number) but John, 2026-08-
+      // 15: "2-fold doesn't help us. That's just the same two points" -- rotating a segment 180
+      // degrees about its own would-be centre just reproduces the original pair, no new
+      // constraint. Reject it here rather than silently building a degenerate "n-gon" that's
+      // really just a 2-point segment relabeled.
+      if (!n || n < 3) {
+        $('verdict').innerHTML = n === 2
+          ? '<div class="verdict v-idk">That point is only a 2-fold centre — rotating a segment 180° just gives the same two points back, no new constraint. Pick a point with true rotational order &ge;3, or type n explicitly.</div>'
+          : '<div class="verdict v-idk">No rotation detected at that point — click a genuine rotation centre, or type n explicitly on the source configuration before deriving.</div>';
+      } else {
+        state.configs.push({
+          id: state.nextId++, kind: 'cfg', tile: null, points: regularNgonPoints(s.p, r0, n), color: nextColor(),
+          label: `n-gon of "${src.label}" (n=${n}, r=d/2=${r0.toFixed(4)})`,
+        });
+      }
+    }
+    state.mode = 'idle'; state.deriveSource = null; state.deriveN = null;
+  }
+  syncUI(); draw();
+});
+
+$('addCfg').addEventListener('click', () => {
+  if (state.mode !== 'idle') return;
+  state.draft = { kind: 'cfg', tile: null, points: [], color: nextColor(), label: `Config ${state.configs.length + 1}` };
+  state.mode = 'pickTile:cfg';
+  syncUI(); draw();
+});
+$('addReg').addEventListener('click', () => {
+  if (state.mode !== 'idle') return;
+  state.draft = { kind: 'reg', tile: null, points: [], color: nextColor(), label: `Region ${state.regions.length + 1}` };
+  state.mode = 'pickTile:reg';
+  syncUI(); draw();
+});
+$('finishGroup').addEventListener('click', () => {
+  if (!state.draft || state.draft.points.length < 1) return;
+  state.draft.id = state.nextId++;
+  (state.draft.kind === 'cfg' ? state.configs : state.regions).push(state.draft);
+  state.draft = null; state.mode = 'idle';
+  syncUI(); draw();
+});
+$('cancelGroup').addEventListener('click', () => {
+  state.draft = null; state.mode = 'idle'; state.deriveSource = null; state.deriveN = null;
+  syncUI(); draw();
+});
+$('undo').addEventListener('click', () => {
+  if (state.draft && state.draft.points.length) state.draft.points.pop();
+  syncUI(); draw();
+});
+$('reset').addEventListener('click', resetPicks);
+$('curveToggle').addEventListener('change', draw);
+$('type').addEventListener('change', e => load(e.target.value));
+$('filter').addEventListener('change', fillTypes);
+$('jump').addEventListener('change', e => {
+  const id = e.target.value.replace('#', '').trim();
+  if (TY[id]) { $('filter').value = 'all'; fillTypes(); $('type').value = id; load(id); }
+});
+
+/* ---------- groups list UI ---------- */
+function modeText(m) {
+  switch (m) {
+    case 'idle': return 'Click "+ Configuration" or "+ Region" to start a new group.';
+    case 'pickTile:cfg': return 'Click the tile that must contain this configuration.';
+    case 'pickPts:cfg': return 'Click forced points anywhere in the drawing (vertices, edge midpoints, tile centres). Click Finish when done.';
+    case 'pickTile:reg': return 'Click the tile whose boundary defines this region.';
+    case 'pickPts:reg': return 'Left-click a boundary point the tile MAY touch (solid); right-click one it may NOT (open). Click round in order, then Finish.';
+    case 'pickCenter:derive': return 'Click the rotation centre for the derived n-gon.';
+    default: return '';
+  }
+}
+function groupCard(g, kind) {
+  const isCfg = kind === 'cfg';
+  let rows;
+  if (isCfg) {
+    if (g.points.length >= 2) {
+      rows = '<table><tr><th>pair</th><th>kinds</th><th>distance</th></tr>';
+      for (let i = 0; i < g.points.length; i++) for (let j = i + 1; j < g.points.length; j++)
+        rows += `<tr><td>${i + 1}–${j + 1}</td><td style="color:#98a0b3">${(g.points[i].kind || '?')[0]}${(g.points[j].kind || '?')[0]}</td>` +
+                 `<td>${dist(g.points[i].p, g.points[j].p).toFixed(5)}</td></tr>`;
+      rows += '</table>';
+    } else {
+      rows = `<p class="hint">${g.points.length} point(s) — need at least 2 for a distance.</p>`;
+    }
+  } else {
+    const na = g.points.filter(s => s.allowed).length, nf = g.points.length - na;
+    rows = `<p class="hint">${g.points.length} boundary point(s) — ${na} allowed, ${nf} forbidden.</p>`;
+  }
+  const noAddr = isCfg && g.points.length && !g.points.every(p => p.addr);
+  const meta = `${g.tile ? 'orbit ' + g.tile.orbit : 'derived (no tile)'} · ${g.points.length} pt(s)` +
+    (noAddr ? ' · <span class="warnline">no address — family test unavailable</span>' : '');
+  // Only meaningful on an exactly-2-point configuration (it needs a single distance d to build
+  // the n-gon from). ALWAYS rendered when that's true -- even mid-build on something else -- so
+  // the control never silently vanishes; only the button itself is disabled then, with a title
+  // explaining why, rather than the whole thing disappearing (John, 2026-08-16: "I can't get the
+  // n-fold rotation to work" -- traced to this hiding instead of disabling).
+  let deriveUI = '';
+  if (isCfg) {
+    if (g.points.length === 2) {
+      const busy = state.mode !== 'idle';
+      deriveUI = `
+    <div class="row derive">
+      <input type="number" min="3" placeholder="n (blank=auto)" data-role="deriven" data-id="${g.id}" ${busy ? 'disabled' : ''} style="flex:0 0 46%">
+      <button class="small" data-action="derive" data-id="${g.id}" ${busy ? 'disabled title="Finish or cancel the group you\'re currently building first"' : ''}>Derive n-gon → new config</button>
+    </div>`;
+    } else if (g.points.length > 0) {
+      deriveUI = `<p class="hint">Derive n-gon needs exactly 2 points (this has ${g.points.length}) — delete down to 2, or start a fresh 2-point configuration for just the far pair.</p>`;
+    }
+  }
+  return `<div class="group" style="border-left-color:${g.color}">
+    <div class="grow">
+      <span class="swatch" style="background:${g.color}"></span>
+      <input type="text" data-role="label" data-id="${g.id}" data-kind="${kind}" value="${String(g.label).replace(/"/g, '&quot;')}">
+      <button class="small warn" data-action="del" data-id="${g.id}" data-kind="${kind}">Delete</button>
+    </div>
+    <div class="hint">${meta}</div>
+    ${rows}
+    ${deriveUI}
+  </div>`;
+}
+function renderGroups() {
+  const draftCard = g => `<div class="group draft" style="border-left-color:${g.color}">
+    <div class="grow"><span class="swatch" style="background:${g.color}"></span><b>${g.kind === 'cfg' ? 'New configuration' : 'New region'} (in progress)</b></div>
+    <div class="hint">${g.tile ? g.points.length + ' point(s) picked so far' : 'pick a tile first'}</div>
+  </div>`;
+  const cfgDraft = state.draft && state.draft.kind === 'cfg' ? draftCard(state.draft) : '';
+  const regDraft = state.draft && state.draft.kind === 'reg' ? draftCard(state.draft) : '';
+  $('cfgList').innerHTML = cfgDraft + state.configs.map(g => groupCard(g, 'cfg')).join('') || '<p class="hint">None yet.</p>';
+  $('regList').innerHTML = regDraft + state.regions.map(g => groupCard(g, 'reg')).join('') || '<p class="hint">None yet.</p>';
+  $('grpn').textContent = `${state.configs.length} config(s), ${state.regions.length} region(s)`;
+}
+function onGroupsInput(e) {
+  const t = e.target;
+  if (t.dataset.role === 'label') {
+    const arr = t.dataset.kind === 'cfg' ? state.configs : state.regions;
+    const g = arr.find(x => x.id == t.dataset.id);
+    if (g) g.label = t.value;
+  }
+}
+function onGroupsClick(e) {
+  const btn = e.target.closest('[data-action]'); if (!btn) return;
+  const id = +btn.dataset.id;
+  if (btn.dataset.action === 'del') {
+    if (btn.dataset.kind === 'cfg') state.configs = state.configs.filter(g => g.id !== id);
+    else state.regions = state.regions.filter(g => g.id !== id);
+    syncUI(); draw();
+  } else if (btn.dataset.action === 'derive') {
+    const inp = document.querySelector(`input[data-role="deriven"][data-id="${id}"]`);
+    const v = inp ? parseInt(inp.value, 10) : NaN;
+    state.deriveN = Number.isFinite(v) && v >= 3 ? v : null;
+    state.mode = 'pickCenter:derive';
+    state.deriveSource = id;
+    syncUI(); draw();
+  }
+}
+$('cfgList').addEventListener('input', onGroupsInput);
+$('regList').addEventListener('input', onGroupsInput);
+$('cfgList').addEventListener('click', onGroupsClick);
+$('regList').addEventListener('click', onGroupsClick);
+
+function fillTestSelects() {
+  const cs = $('testCfg'), rs = $('testReg');
+  const prevC = cs.value, prevR = rs.value;
+  cs.innerHTML = state.configs.map(g => `<option value="${g.id}">${g.label} (${g.points.length} pt)</option>`).join('') || '<option value="">—</option>';
+  rs.innerHTML = state.regions.map(g => `<option value="${g.id}">${g.label} (${g.points.length} pt)</option>`).join('') || '<option value="">—</option>';
+  if (state.configs.some(g => String(g.id) === prevC)) cs.value = prevC;
+  else if (state.configs.length) cs.value = String(state.configs[state.configs.length - 1].id);
+  if (state.regions.some(g => String(g.id) === prevR)) rs.value = prevR;
+  else if (state.regions.length) rs.value = String(state.regions[state.regions.length - 1].id);
+}
+function selectedCfg() { return state.configs.find(g => String(g.id) === $('testCfg').value); }
+function selectedReg() { return state.regions.find(g => String(g.id) === $('testReg').value); }
+
+function syncUI() {
+  const bs = $('buildStatus');
+  bs.textContent = modeText(state.mode);
+  bs.className = 'step' + (state.mode !== 'idle' ? ' on' : '');
+  $('addCfg').disabled = state.mode !== 'idle';
+  $('addReg').disabled = state.mode !== 'idle';
+  const picking = state.mode === 'pickPts:cfg' || state.mode === 'pickPts:reg';
+  $('finishGroup').disabled = !picking || !state.draft || state.draft.points.length < 1;
+  $('cancelGroup').disabled = state.mode === 'idle';
+  $('undo').disabled = !state.draft || !state.draft.points.length;
+
+  renderGroups();
+  fillTestSelects();
+
+  const cg = selectedCfg(), rg = selectedReg();
+  const ready = !!(cg && rg && cg.points.length >= 2 && rg.points.length >= 3);
+  $('run').disabled = !ready;
+  $('runfam').disabled = !ready;
+}
+
+/* ---------- the fit test ----------
+   Can any isometric copy (rotation, reflection, translation) of the configuration sit inside the
+   region? Rasterise the region, then for each rotation intersect the region mask shifted by each
+   configuration point; a surviving cell is a valid placement. */
+function fits(cfgPts, regionPts, opts) {
+  const res = (opts && opts.res) || 190, rot = (opts && opts.rot) || 180;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of regionPts) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]);
+                               x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+  const w = x1 - x0, h = y1 - y0;
+  const nx = res, ny = Math.max(8, Math.round(res * h / w));
+  const dx = w / (nx - 1), dy = h / (ny - 1);
+  const mask = new Uint8Array(nx * ny);
+  for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++)
+    mask[iy * nx + ix] = inPoly([x0 + ix * dx, y0 + iy * dy], regionPts) ? 1 : 0;
+  const cx = cfgPts.reduce((a, p) => a + p[0], 0) / cfgPts.length;
+  const cy = cfgPts.reduce((a, p) => a + p[1], 0) / cfgPts.length;
+  const base = cfgPts.map(p => [p[0] - cx, p[1] - cy]);
+  let best = null;
+  for (const mir of [1, -1]) for (let k = 0; k < rot; k++) {
+    const th = 2 * Math.PI * k / rot, c = Math.cos(th), s = Math.sin(th);
+    const q = base.map(p => { const X = mir * p[0]; return [c * X - s * p[1], s * X + c * p[1]]; });
+    for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+      if (!mask[iy * nx + ix]) continue;
+      const tx = x0 + ix * dx, ty = y0 + iy * dy;
+      let ok = true;
+      for (const p of q) {
+        const jx = Math.round((tx + p[0] - x0) / dx), jy = Math.round((ty + p[1] - y0) / dy);
+        if (jx < 0 || jy < 0 || jx >= nx || jy >= ny || !mask[jy * nx + jx]) { ok = false; break; }
+      }
+      if (ok) { best = { th, mir, t: [tx, ty] }; break; }
+    }
+    if (best) break;
+  }
+  return { fits: !!best, placement: best, cellW: dx, cellH: dy };
+}
+
+// EXACT (non-raster) fit checks, ported from _dev_isohedral/shape_align.js (2026-08-19). The raster
+// fits() above samples translations on a fixed grid and has near-zero odds of landing a
+// configuration point exactly on a sharp region-polygon corner -- but that is precisely where the
+// true fit lives whenever a configuration's own points were built FROM that same tile shape (e.g.
+// a bare far-pair config tested against a region built from another copy of its own tile orbit): the
+// correct isometry places them exactly on the region's own vertices. Found live on #35 (John: "it
+// totally fits" -- Config 1, a 2-point far-pair, against a region built from a congruent copy of the
+// same tile; exactCornerFit confirms fits=true via vertices 1&4 of the region, exactly 3.414214
+// apart, matching the config's own distance exactly -- the raster check missed it and reported
+// false). This does NOT replace the raster search; it's an exact check tried FIRST (matching how
+// _dev_isohedral/squash_family_test.js already does this for the batch proof pipeline -- only this
+// interactive page's own run/runfam buttons were missing it).
+function makeTransform(t0, t1, th, mir) {
+  const c = Math.cos(th), s = Math.sin(th);
+  return p => { const x = p[0] - t0[0], y = (p[1] - t0[1]) * mir;
+    return [t1[0] + c * x - s * y, t1[1] + s * x + c * y]; };
+}
+function findShapeMatch(polyA, polyB, eps) {
+  const k = polyA.length; if (polyB.length !== k) return null;
+  for (let off = 0; off < k; off++) for (const mir of [1, -1]) {
+    const B = i => polyB[(off + i) % k];
+    const dA = [polyA[1][0] - polyA[0][0], (polyA[1][1] - polyA[0][1]) * mir];
+    const dB = [B(1)[0] - B(0)[0], B(1)[1] - B(0)[1]];
+    if (Math.abs(Math.hypot(dA[0], dA[1]) - Math.hypot(dB[0], dB[1])) > eps) continue;
+    const th = Math.atan2(dB[1], dB[0]) - Math.atan2(dA[1], dA[0]);
+    const T = makeTransform(polyA[0], B(0), th, mir);
+    let ok = true;
+    for (let i = 0; i < k; i++) { const q = T(polyA[i]); if (dist(q, B(i)) > eps) { ok = false; break; } }
+    if (ok) return { T, mir, off };
+  }
+  return null;
+}
+function inClosedPoly(p, poly, eps) {
+  for (const v of poly) if (dist(v, p) < eps) return true;
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if (((a[1] > p[1]) !== (b[1] > p[1])) && (p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])) c = !c;
+  }
+  return c;
+}
+function exactShapeFit(cfgPts, region, tileA, tileB, eps) {
+  eps = eps || 1e-6;
+  if (!tileA || !tileB) return { fits: false, exact: false };
+  const m = findShapeMatch(tileA.pts, tileB.pts, eps);
+  if (!m) return { fits: false, exact: false };
+  const regionPts = region.map(s => s.p);
+  for (const p of cfgPts) {
+    const q = m.T(p);
+    const hitsForbidden = region.some(s => !s.allowed && dist(s.p, q) < eps);
+    if (hitsForbidden || !inClosedPoly(q, regionPts, eps)) return { fits: false, exact: true, transform: m };
+  }
+  return { fits: true, exact: true, transform: m };
+}
+function exactCornerFit(cfgPts, region, eps) {
+  eps = eps || 1e-6;
+  const regionPts = region.map(s => s.p);
+  const n = cfgPts.length, m = region.length;
+  if (n < 2 || m < 2) return { fits: false };
+  const forbidden = region.filter(s => !s.allowed).map(s => s.p);
+  const okPoint = q => !forbidden.some(f => dist(f, q) < eps) && inClosedPoly(q, regionPts, eps);
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    if (a === b) continue;
+    const dAB = dist(cfgPts[a], cfgPts[b]);
+    for (let u = 0; u < m; u++) for (let v = 0; v < m; v++) {
+      if (u === v) continue;
+      if (Math.abs(dist(regionPts[u], regionPts[v]) - dAB) > eps) continue;
+      for (const mir of [1, -1]) {
+        const dA = [cfgPts[b][0] - cfgPts[a][0], (cfgPts[b][1] - cfgPts[a][1]) * mir];
+        const dB = [regionPts[v][0] - regionPts[u][0], regionPts[v][1] - regionPts[u][1]];
+        const th = Math.atan2(dB[1], dB[0]) - Math.atan2(dA[1], dA[0]);
+        const T = makeTransform(cfgPts[a], regionPts[u], th, mir);
+        if (cfgPts.every(p => okPoint(T(p)))) return { fits: true, placement: { a, b, u, v, mir } };
+      }
+    }
+  }
+  return { fits: false };
+}
+// BUG FIX (2026-08-13): fits() rasterizes a plain polygon and knows nothing about which boundary
+// points the restricted tile MAY vs MAY NOT touch -- so until now BOTH the run button and the
+// family test passed every region point regardless of its `allowed` flag, and the right-click
+// "forbidden" distinction never actually affected any verdict. It was recorded in the export and
+// drawn as an open ring, but the machine check ignored it, which silently reports "it fits" for
+// placements that sit exactly on a forbidden corner. Found on #119 (John: "one vertex allowed and
+// the two others forbidden... since two vertices are forbidden, it can't fit") -- the tool said it
+// fitted; by John's own argument it must not.
+//
+// Encode "may not touch this corner" the way an open interval endpoint is: clip a small corner off
+// the polygon at each forbidden vertex, so a placement needing that exact point falls outside. Only
+// ever makes fitting HARDER, so it cannot manufacture a false "does not fit"; `f` must stay larger
+// than one raster cell (~1/res of the bounding box) for the grid to see the cut at all.
+function regionFitPts(region, f) {
+  f = f || 0.02;
+  const n = region.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const cur = region[i], prev = region[(i - 1 + n) % n].p, next = region[(i + 1) % n].p;
+    if (cur.allowed) { out.push(cur.p); continue; }
+    out.push([cur.p[0] + (prev[0] - cur.p[0]) * f, cur.p[1] + (prev[1] - cur.p[1]) * f]);
+    out.push([cur.p[0] + (next[0] - cur.p[0]) * f, cur.p[1] + (next[1] - cur.p[1]) * f]);
+  }
+  return out;
+}
+
+$('run').addEventListener('click', () => {
+  const cg = selectedCfg(), rg = selectedReg(); if (!cg || !rg) return;
+  const cfgPts = cg.points.map(s => s.p);
+  // Try the exact (non-raster) checks first -- see the exactShapeFit/exactCornerFit comment above
+  // for why the raster grid can miss a real fit whenever a config point belongs exactly on a region
+  // vertex, which happens routinely here since both are built from the same finite snap-point set.
+  const exact = exactShapeFit(cfgPts, rg.points, cg.tile, rg.tile);
+  const corner = exact.fits ? null : exactCornerFit(cfgPts, rg.points);
+  const usedExact = exact.fits || (corner && corner.fits);
+  const r = usedExact ? null : fits(cfgPts, regionFitPts(rg.points));
+  const fitsResult = usedExact ? true : r.fits;
+  const method = exact.fits ? 'exact-shape' : (corner && corner.fits) ? 'exact-corner' : 'raster';
+  state.lastTest = { cfgId: cg.id, cfgLabel: cg.label, regId: rg.id, regLabel: rg.label, kind: 'raster', fits: fitsResult, method };
+  const methodNote = method === 'raster' ? `Grid resolution ${Math.max(r.cellW, r.cellH).toExponential(1)}; run the family test before treating it as settled.`
+    : `Found by an exact (non-raster) check — a config point landing precisely on a region vertex, which the coarse grid search can miss by construction.`;
+  $('verdict').innerHTML = fitsResult
+    ? `<div class="verdict v-yes"><b>It fits.</b> A copy of "${cg.label}" sits inside "${rg.label}"
+       ${method === 'raster' ? `(rotation ${(r.placement.th * 180 / Math.PI).toFixed(0)}°${r.placement.mir < 0 ? ', reflected' : ''})` : '(' + method + ')'}.
+       No contradiction here — this pair does not rule the type out.</div>`
+    : `<div class="verdict v-no"><b>It does not fit.</b> No rotation, reflection or translation places
+       "${cg.label}" inside "${rg.label}", so the two tiles cannot be congruent — at this shape.
+       ${methodNote}</div>`;
+});
+
+$('runfam').addEventListener('click', () => {
+  const cg = selectedCfg(), rg = selectedReg(); if (!cg || !rg) return;
+  if (!cg.points.every(p => p.addr) || !rg.points.every(p => p.addr)) {
+    $('verdict').innerHTML = '<div class="verdict v-idk">One or more points in this pair has no combinatorial address (a derived n-gon, most likely), so the family test cannot re-derive it across deformations. The plain fit test above still works on it.</div>';
+    return;
+  }
+  const btn = $('runfam'); btn.disabled = true; btn.textContent = 'Testing family…';
+  setTimeout(() => {
+    let res;
+    try { res = familyTest(cg.points, rg.points); }
+    catch (e) { res = { err: e.message }; }
+    if (res.err) {
+      $('verdict').innerHTML = `<div class="verdict v-idk">Family test unavailable: ${res.err}</div>`;
+    } else if (res.everFits) {
+      state.lastTest = { cfgId: cg.id, cfgLabel: cg.label, regId: rg.id, regLabel: rg.label, kind: 'family', everFits: true, fitCount: res.fitCount, n: res.n };
+      $('verdict').innerHTML = `<div class="verdict v-idk"><b>Fits somewhere in the family.</b>
+        ${res.fitCount} of ${res.n} sampled shapes admit "${cg.label}" inside "${rg.label}", so this
+        pair does not prove impossibility across deformations.</div>`;
+    } else if (res.rigidity && res.rigidity.rigid) {
+      state.lastTest = { cfgId: cg.id, cfgLabel: cg.label, regId: rg.id, regLabel: rg.label, kind: 'family', everFits: false, proved: 'tile-rigid' };
+      $('verdict').innerHTML = `<div class="verdict v-no"><b>PROVED — never fits, and the tiles are rigid.</b>
+        The tile shapes are invariant up to similarity across the whole family (largest deviation
+        ${res.rigidity.worst.toExponential(1)} over ${res.rigidity.samples} samples): only scale and
+        rotation change. So there is no other shape to check &mdash; the configuration cannot fit the
+        region for <em>any</em> member, and the two tiles can never be congruent.
+        <br><br>The cone has dimension ${res.rigidity.dim}, but that freedom is gauge: it slides
+        regular points along mirrors without moving a single tile vertex.</div>`;
+    } else if (res.configShapeRigid) {
+      state.lastTest = { cfgId: cg.id, cfgLabel: cg.label, regId: rg.id, regLabel: rg.label, kind: 'family', everFits: false, proved: 'config-rigid' };
+      $('verdict').innerHTML = `<div class="verdict v-no"><b>PROVED — never fits, and this exact pair of
+        points is rigid.</b> The full tile polygons do deform across the family (dimension ${res.dim}),
+        so the generic tile-shape check above doesn't apply here &mdash; but the specific configuration
+        and region points picked keep an invariant relative geometry throughout it (largest deviation
+        ${res.configShapeWorst.toExponential(1)} over ${res.n} samples). That's enough on its own: if
+        this exact arrangement of points never changes shape, testing it anywhere in the family settles
+        every member at once, and the two tiles can never be congruent.</div>`;
+    } else {
+      state.lastTest = { cfgId: cg.id, cfgLabel: cg.label, regId: rg.id, regLabel: rg.label, kind: 'family', everFits: false, proved: false };
+      $('verdict').innerHTML = `<div class="verdict v-no"><b>Never fits — across ${res.n} sampled shapes.</b>
+        The configuration does not fit the region at any sampled point of the deformation cone
+        (dimension ${res.dim}), and the tiles <em>do</em> deform here (shape deviation up to
+        ${res.rigidity ? res.rigidity.worst.toExponential(1) : '?'}). Strong evidence, but sampling is
+        local, so this is not yet a closed proof.</div>`;
+    }
+    btn.disabled = false; btn.textContent = 'Test across the deformation family';
+  }, 20);
+});
+
+/* Are the TILE SHAPES rigid across the deformation family?
+   This is the distinction that decides whether a single fit test is a proof. The DOMAIN polygon
+   almost always changes shape, but much of that is gauge: a regular orbit (v = 1) sitting on a
+   mirror slides along it, moving the chamber decomposition while every tile vertex stays put.
+   #4 and #31 both show this -- their domains "deform" while their tiles only rescale and rotate.
+   So measure the tiles, not the domain: sorted pairwise vertex distances over the diameter is a
+   similarity invariant, and if it never moves, no deformation can rescue a failed fit. */
+function tileRigidity(sym) {
+  const F = DF.sampleFamily(sym, { steps: 2, spread: 0.45 });
+  if (!F) return null;
+  const sig = pts => { const d = [];
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
+      d.push(Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]));
+    d.sort((a, b) => a - b); const m = d[d.length - 1] || 1; return d.map(x => x / m); };
+  const per = {}; let n = 0;
+  for (const smp of F.samples) {
+    const C = DF.placeFromLengths(F.D, F.I, F.K, smp.L); if (!C) continue;
+    let dev; try { dev = DD.develop(sym, { maxCopies: 80, realization: { D: F.D, I: F.I, K: F.K, C } }); }
+    catch (e) { continue; }
+    const seen = {};
+    for (const t of dev.complete) if (seen[t.orbit] === undefined) {
+      seen[t.orbit] = 1; (per[t.orbit] = per[t.orbit] || []).push(sig(t.pts));
+    }
+    n++;
+  }
+  let worst = 0;
+  for (const o of Object.keys(per)) { const L = per[o];
+    for (const s of L) { if (s.length !== L[0].length) { worst = Infinity; break; }
+      for (let i = 0; i < s.length; i++) worst = Math.max(worst, Math.abs(s[i] - L[0][i])); } }
+  return { samples: n, worst, rigid: worst < 1e-9, dim: F.dim };
+}
+
+// A configuration/region point's ORBIT does not identify IT -- an orbit can (and for the multi-
+// vertex configs this tool is built for, usually does) contain many geometrically different
+// points, so re-picking "some point of this orbit, sorted first" on a deformed shape silently
+// swapped in a different point of the same orbit instead of following the one actually clicked.
+// Worst case (#587, #588): every clicked point sits in the SAME orbit, so all of them collapsed
+// onto ONE point, every sample -- a near-degenerate configuration trivially "fits" almost any
+// region, manufacturing a false "possible" verdict out of a proof that never ran. Fixed by
+// addr:{h,f,ty} (see draw_dsym2.js), a combinatorial address stable across the whole deformation
+// family: re-derive the SAME point by applying dev.copies[h] to that chamber corner directly,
+// no orbit search involved. maxCopies must match load()'s 160 or addr.h can run past the shorter
+// array this function used to use.
+function pickByAddr(dev, addrs) {
+  return addrs.map(a => {
+    const T = dev.copies[a.h]; if (!T) return null;
+    return DD.apply(T, dev.R.C.P[dev.R.K.cornOf(a.f, a.ty)]);
+  });
+}
+// Scale/rotation/reflection-invariant shape signature of a point set: every pairwise distance,
+// normalized by the first. Comparing this across family samples asks a narrower, often more
+// useful question than tileRigidity() above -- not "does the whole tile polygon ever change
+// shape" (#588's 9-gon genuinely does, chambers of different sizes sliding relative to each
+// other) but "do THESE SPECIFIC clicked points keep the same relative geometry" (true whenever,
+// as John noted for #588, every clicked point is a corner of one mirror-bounded chamber triangle
+// -- its angles are forced by the branching numbers alone, so by AAA its shape can never change,
+// independent of whatever freedom the rest of the tiling's chambers have relative to each other).
+function pairSig(pts) {
+  const d = [];
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++)
+    d.push(Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]));
+  const ref = d[0] || 1;
+  return d.map(x => x / ref);
+}
+// `opts.maxCopies` lets a caller (the interactive UI never needs to) push the re-develop sample
+// past the default 160 -- needed when a picked point's `addr.h` indexes past 160 in `dev.copies`,
+// which silently drops that point from every family sample otherwise (`pickByAddr` returns null,
+// and the sample is skipped below). Default unchanged, so the button's own behavior is identical.
+// Takes explicit config/region POINT ARRAYS now (not the old single global state.cfg/region), so
+// any configuration can be tested against any region, not just the one pair originally picked.
+function familyTest(cfgPoints, regPoints, opts) {
+  // Guard against the pre-2026-08-16 calling convention `familyTest({maxCopies})`, which used to
+  // read the page's single global state.cfg/state.region. Node callers in _dev_isohedral drive
+  // this through the vm sandbox, and when the signature changed the old call silently degraded
+  // into "cfgPoints = an options object" and threw a bare `cfgPoints.map is not a function` --
+  // which a caller's try/catch turned into 41 quietly discarded records. Fail loudly instead.
+  if (!Array.isArray(cfgPoints) || !Array.isArray(regPoints))
+    throw new Error('familyTest(cfgPoints, regPoints, opts): pass the two point arrays explicitly ' +
+                    '-- the old single-global-state form is gone (got ' + typeof cfgPoints + ', ' + typeof regPoints + ')');
+  const maxCopies = (opts && opts.maxCopies) || 160;
+  const sym = TY[state.id].sym;
+  const F = DF.sampleFamily(sym, { steps: 2, spread: 0.45 });
+  if (!F) throw new Error('no deformation family');
+  const cfgAddr = cfgPoints.map(s => s.addr), regAddr = regPoints.map(s => s.addr);
+  if (cfgAddr.some(a => !a) || regAddr.some(a => !a))
+    throw new Error('a picked point has no address -- reload the type and re-pick to use the fixed tool');
+  let n = 0, fitCount = 0, examples = [], sigs = [];
+  for (const smp of F.samples) {
+    const C = DF.placeFromLengths(F.D, F.I, F.K, smp.L); if (!C) continue;
+    let dev; try { dev = DD.develop(sym, { maxCopies, realization: { D: F.D, I: F.I, K: F.K, C } }); }
+    catch (e) { continue; }
+    const cp = pickByAddr(dev, cfgAddr), rp = pickByAddr(dev, regAddr);
+    if (cp.some(x => !x) || rp.some(x => !x)) continue;
+    n++;
+    sigs.push(pairSig([...cp, ...rp]));
+    // same forbidden-corner handling as the run button (see regionFitPts) -- the deformed sample's
+    // own re-derived points, re-tagged with each region point's allowed flag, which is combinatorial
+    // and therefore identical across every member of the family. Exact-corner check tried first
+    // (same reason as the run button above -- the raster grid can miss a config point landing
+    // exactly on a region vertex), raster as the fallback.
+    const rp2 = rp.map((p, i) => ({ p, allowed: regPoints[i].allowed }));
+    const corner = exactCornerFit(cp, rp2);
+    const r = corner.fits ? null : fits(cp, regionFitPts(rp2), { res: 90, rot: 72 });
+    if (corner.fits || r.fits) { fitCount++; examples.push({ tag: smp.tag, cp, rp, placement: corner.fits ? corner.placement : r.placement }); }
+  }
+  if (!n) throw new Error('no usable samples');
+  let configShapeWorst = 0;
+  for (const s of sigs) { if (s.length !== sigs[0].length) { configShapeWorst = Infinity; break; }
+    for (let i = 0; i < s.length; i++) configShapeWorst = Math.max(configShapeWorst, Math.abs(s[i] - sigs[0][i])); }
+  return { n, fitCount, everFits: fitCount > 0, dim: F.dim, rigidity: tileRigidity(sym),
+           configShapeRigid: configShapeWorst < 1e-9, configShapeWorst, examples };
+}
+
+$('export').addEventListener('click', () => {
+  const t = TY[state.id];
+  const rec = {
+    type: '#' + state.id, symbol: t.sym, orbifold: t.orb, k: t.k, n: t.n, verdict: t.v,
+    configurations: state.configs.map(g => ({
+      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null,
+      points: g.points.map((s, i) => ({ i: i + 1, kind: s.kind, orbit: s.orbit, xy: s.p, addr: s.addr || null })),
+      pairwiseDistances: g.points.flatMap((a, i) => g.points.slice(i + 1).map((b, j) =>
+        ({ pair: `${i + 1}-${i + j + 2}`, d: +dist(a.p, b.p).toFixed(6) }))),
+    })),
+    regions: state.regions.map(g => ({
+      id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null,
+      points: g.points.map((s, i) => ({ i: i + 1, kind: s.kind, orbit: s.orbit, xy: s.p, allowed: s.allowed, addr: s.addr || null })),
+      allowedPoints: g.points.filter(s => s.allowed).map(s => ({ kind: s.kind, orbit: s.orbit, xy: s.p })),
+      forbiddenPoints: g.points.filter(s => !s.allowed).map(s => ({ kind: s.kind, orbit: s.orbit, xy: s.p })),
+    })),
+    lastTest: state.lastTest,
+    note: 'Each configuration is a set of points forced to lie in one tile -- OR, for a derived n-gon (see its label), points with no addr constructed by rotating a segment n-fold about a chosen centre, per the "radius" argument (reference_radius_argument.md). Each region traces a restricted tile\'s boundary in click order: allowed points bound a closed edge (the tile may touch them), forbidden ones an open edge (it may not). Any configuration can be tested against any region in the Test section -- they need not be the pair originally picked together. If no isometric copy of a configuration fits inside a region, the two tiles cannot be congruent.',
+  };
+  const txt = JSON.stringify(rec, null, 2);
+  $('out').textContent = txt;
+  navigator.clipboard && navigator.clipboard.writeText(txt);
+});
+
+$('savePic').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.download = `netshape-${state.id || 'type'}.png`;
+  a.href = cv.toDataURL('image/png');
+  a.click();
+});
+
+$('saveSvg').addEventListener('click', () => {
+  const svg = buildSVG();
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.download = `netshape-${state.id || 'type'}.svg`;
+  a.href = url;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ================= fundamental-domain editor =================================================
+   The drawing the engine hands you is only ONE realization. dsym_deform's length cone -- the old
+   model of "the family" -- freezes every corner angle at the equal share 2pi/(v*f*s) and never
+   moves the corners interior to the domain, so it cannot reach most realizations. #8826 is the
+   worked example: canonical tile-area ratio 133.3, cone floor 64.6, John's hand-drawn target 9.8,
+   and editing here reaches 2.6.
+
+   Two handle classes:
+     interior corners -- feed no generator at all, so they carry NO constraint;
+     walk corners     -- constrained by C1 closure, C2 cut-edge congruence and C3 the per-orbit
+                         angle SUM (Poincare), all solved in dsym_edit.dragBoundary.
+   Validity is the chamber-orientation test, NOT DrawDsym.verify(): verify is only a coverage probe
+   and passes on realizations whose chambers have flipped (measured 517/517 bogus on #8826).       */
+const DE = window.DsymEdit;
+state.edit = null;
+
+function editActive() { return !!state.edit; }
+/* Readable from outside, so a script (or a test) can inspect and drive the editor rather than
+   having to scrape the canvas -- same reason aniso.js exposes specify()'s arrays. */
+window.__edit = () => state.edit;
+/* The three dimension controls are not in state.edit.handles (they are derived per frame), so
+   expose them, with both the true point `p` and the nudged drawn point `dp`, in screen space. */
+window.__latHandles = () => {
+  const r = $('fd').getBoundingClientRect();
+  return latticeHandles().map(h => {
+    const a = fdToS(h.p), b = fdToS(h.dp || h.p);
+    return { kind: h.kind, fixed: !!h.fixed, p: h.p.slice(), dp: (h.dp || h.p).slice(),
+             x: r.left + a[0], y: r.top + a[1], dx: r.left + b[0], dy: r.top + b[1] };
+  });
+};
+window.__editHandleScreen = i => {
+  const h = state.edit.handles[i], p = state.edit.M.P[h.corner], q = fdToS(p);
+  const r = $('fd').getBoundingClientRect();
+  return { corner: h.corner, kind: h.kind, role: h.role, x: r.left + q[0], y: r.top + q[1] };
+};
+
+function fdFit() {
+  const M = state.edit.M;
+  /* Fit the FUNDAMENTAL DOMAIN only. The lattice cell used to be included here so the old
+     off-domain handles stayed visible, but the cell is |group| times bigger than the domain, so it
+     squeezed the FD down to a speck in the corner. Every control now sits on the domain itself, so
+     there is nothing off-domain left to keep in view. */
+  const pts = M.P.filter(Boolean).slice();
+  // the ratio handle is not one of M.P, so include it or it can sit outside the pane
+  if (state.edit.dc && state.edit.dc.shapePoint) pts.push(state.edit.dc.shapePoint);
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) || 1;
+  const s = 300 / (span * 1.18);                       // a little room to drag outside the box
+  state.edit.view = { s, ox: 150 - cx * s, oy: 150 + cy * s };
+}
+const fdToS = p => [state.edit.view.ox + p[0] * state.edit.view.s,
+                    state.edit.view.oy - p[1] * state.edit.view.s];
+const fdToW = (x, y) => [(x - state.edit.view.ox) / state.edit.view.s,
+                         (state.edit.view.oy - y) / state.edit.view.s];
+
+function beginEdit() {
+  if (!state.dev || !state.dev.R) return;
+  const R = state.dev.R;
+  let M;
+  try { M = DE.buildEditModel(R.D, R.I, R.K, R.C); }
+  catch (e) { $('editStatus').textContent = 'Cannot edit this type: ' + e.message; return; }
+  /* Pin the rotation centres before anything else. They are what the lattice is measured from, so
+     without this the constrained re-solve slides them and an ordinary shape drag silently rescales
+     the whole tiling -- John on #442: "Some make it scale just like the yellow point." */
+  try { DE.setPins(M, DE.pinnedWalkPositions(M, state.dev, DE.constraintAt)); } catch (e) { M.pins = []; }
+  const handles = DE.classifyHandles(M);
+  for (const h of handles) h.con = DE.constraintAt(state.dev, M.P[h.corner]);
+  for (const h of handles) if (h.kind === 'boundary') h.slider = DE.sliderInfo(M, h.walkIndex);
+  state.edit = {
+    M, R,
+    mode: 'dimensions',        // 'dimensions' (the skeleton) | 'shape' (lattice held fixed)
+    lattice0: null,
+    handles,
+    drag: null, view: null,
+    lastGood: M.P.map(p => p.slice()),
+    canonical: M.P.map(p => p.slice()),
+    undo: [],
+  };
+  state.edit.lattice0 = DE.latticeBasis(state.dev);
+  state.edit.lc = DE.latticeControls(M, state.dev, TY[state.id] && TY[state.id].orb);
+  state.edit.dc = DE.dimensionControls(M, state.dev, TY[state.id] && TY[state.id].orb);
+  state.edit.metrics = DE.metrics(state.dev);
+  fdFit();
+  $('fdwrap').hidden = false;
+  $('editBtns').hidden = false;
+  $('editToggle').textContent = 'Close editor';
+  setEditMode('dimensions');
+  drawFd();
+}
+
+/* Two kinds of edit, kept apart on purpose. John, 2026-08-30: "I'd like a clearer difference
+   between changing the dimensions of the tiling and moving vertices of tiles ... Right now,
+   sometimes (say for #41) when I move any vertex the dimensions change. I can't always predict what
+   the end result will be."  The distinction is exact: a drag changes the lattice iff it re-derives
+   the side-pairing transforms. Holding them fixed (dragFree / interior corners) reshapes tiles with
+   the lattice untouched; the constrained solve moves the lattice. */
+function setEditMode(m) {
+  if (!state.edit) return;
+  state.edit.mode = m;
+  const on = 'background:#29344a;border-color:#4a5a7a', off = '';
+  $('modeDim').style.cssText = 'flex:1;' + (m === 'dimensions' ? on : off);
+  $('modeShape').style.cssText = 'flex:1;' + (m === 'shape' ? on : off);
+  $('modeHint').textContent = m === 'dimensions'
+    ? 'Dimensions: drag a square handle (the skeleton). These re-derive the side pairings, so the lattice changes.'
+    : 'Tile shape: the side pairings are held fixed, so the lattice cannot change — only the tiles are reshaped. Round handles are always free.';
+  drawFd();
+}
+
+// Which handles respond in the current mode.
+/* Dimensions mode now shows ONLY the lattice skeleton -- two handles, per John 2026-08-31: "we
+   don't need 12 square control points. There isn't that much variability in the shape ... one
+   control point slide for aspect, and another move anywhere to resize (scaling) and rotate. I can't
+   see any way you'd want more than these two control points." The lattice freedom is 0, 1 or 2 by
+   orbifold, so the aspect handle simply does not appear when the lattice is rigid. */
+/* Every movable point stays movable in BOTH modes. John, 2026-09-02: "I notice that we can't move
+   any of the other points - just the skeleton for the dimensions of the FD. Sometimes we will need
+   to be able to move the other movable points around."  The mode now decides only what the THREE
+   SKELETON corners do when grabbed -- dimension change in Dimensions mode, ordinary tile-shape move
+   in Tile shape mode. Every other corner, and every interior point, is always a shape handle. */
+function skeletonCorners() {
+  const dc = state.edit && state.edit.dc;
+  if (!dc) return [];
+  // the ANCHOR is only a reference origin for dimension drags -- it is still an ordinary movable
+  // point (constrained to its mirror, if it has one), so it is not reserved here
+  return [dc.sizerCorner].filter(c => c != null);   // the ratio handle is not a corner
+}
+function handleLive(h) {
+  if (!state.edit) return false;
+  if (state.edit.mode !== 'dimensions') return true;    // Tile shape: everything is a shape handle
+  return skeletonCorners().indexOf(h.corner) < 0;       // Dimensions: skeleton is grabbed separately
+}
+
+// The two lattice handles, in screen space, or [] when not in Dimensions mode.
+function latticeHandles() {
+  if (!state.edit || state.edit.mode !== 'dimensions' || !state.edit.dc) return [];
+  const dc = state.edit.dc, P = state.edit.M.P, out = [];
+  out.push({ kind: 'anchor', fixed: true, p: P[dc.anchorCorner] });
+  if (dc.shapePoint) out.push({ kind: 'shape', p: dc.shapePoint });
+  out.push({ kind: 'sizer', p: P[dc.sizerCorner] });
+  const hs = out.filter(h => h.p);
+  /* All three controls now sit ON corners of the domain (John, on #363: "we could always have the
+     yellow, red and blue points associated with some point, even if we offset them to make both
+     clickable"). A control drawn exactly on its corner would bury that corner's own handle, so
+     nudge the DISC 11px off to the side, with a stalk back to the true point. The offset is
+     screen-space only -- `p` stays exact, and the drag subtracts `off` from the pointer -- so the
+     geometry is untouched. */
+  const A = hs[0] && hs[0].p, sc = (state.edit.view && state.edit.view.s) || 1, d = 11 / sc;
+  for (const h of hs) {
+    h.off = [0, 0];
+    const buried = state.edit.M.P.some((q, i) =>
+      q && i !== dc.shapeCorner && Math.hypot(q[0] - h.p[0], q[1] - h.p[1]) < 1e-9) ||
+      (h.kind === 'shape' && dc.shapeCorner != null);
+    if (!buried || !A) continue;
+    let ax = [h.p[0] - A[0], h.p[1] - A[1]];
+    const L = Math.hypot(ax[0], ax[1]);
+    if (L < 1e-9) { const B = hs[hs.length - 1].p; ax = [B[0] - A[0], B[1] - A[1]]; }
+    const L2 = Math.hypot(ax[0], ax[1]) || 1;
+    h.off = [-ax[1] / L2 * d, ax[0] / L2 * d];        // perpendicular to the spoke
+  }
+  for (const h of hs) h.dp = [h.p[0] + h.off[0], h.p[1] + h.off[1]];
+  return hs;
+}
+function endEdit() {
+  state.edit = null;
+  $('fdwrap').hidden = true;
+  $('editBtns').hidden = true;
+  $('editToggle').textContent = 'Edit shape';
+}
+
+/* Rebuild the whole tiling from the edited domain and swap it in. Order matters and is the
+   established one: dev first, then the curves rebuilt from THAT dev, then re-derive every picked
+   point -- netshape matches config/region tiles by object identity, so a stale dev silently loses
+   the filled tiles. */
+function applyRealization() {
+  const M = state.edit.M;
+  let dev;
+  try { dev = DD.develop(TY[state.id].sym, { maxCopies: 160, realization: { D: M.D, I: M.I, K: M.K, C: DE.toC(M) } }); }
+  catch (e) { return { ok: false, reason: e.message }; }
+  if (!dev || !dev.complete.length) return { ok: false, reason: 'no tiles' };
+  state.dev = dev;
+  state.edgeCurves = buildEdgeCurves(dev);
+  refreshPicks(dev);
+  if (state.edit) {
+    state.edit.lattice = DE.latticeBasis(dev);
+    state.edit.lc = DE.latticeControls(state.edit.M, dev, TY[state.id] && TY[state.id].orb);
+    if (!state.edit.drag) state.edit.dc = DE.dimensionControls(state.edit.M, dev, TY[state.id] && TY[state.id].orb);
+    else if (state.edit.dc && !state.edit.dcHeld) DE.refreshShapeHandle(state.edit.M, state.edit.dc, false);
+  }
+  draw();
+  return { ok: true, dev };
+}
+
+/* Picked config/region points survive a re-realization because their addr {h,f,ty} is purely
+   combinatorial (draw_dsym2.js:96-115) -- the same abstract group word in any realization sharing
+   D,I,K. The TILE reference is not addressed that way, so re-locate it by centre. */
+function refreshPicks(dev) {
+  const groups = state.configs.concat(state.regions, state.draft ? [state.draft] : []);
+  for (const g of groups) {
+    const addrs = g.points.map(s => s.addr).filter(Boolean);
+    if (addrs.length === g.points.length && addrs.length) {
+      const pts = pickByAddr(dev, addrs);
+      g.points.forEach((s, i) => { if (pts[i]) s.p = pts[i]; });
+    }
+    if (g.tile) {
+      let best = null, bd = Infinity;
+      for (const t of dev.complete) {
+        if (t.orbit !== g.tile.orbit) continue;
+        const d = dist(t.ctr, g.tile.ctr);
+        if (d < bd) { bd = d; best = t; }
+      }
+      if (best) g.tile = best;
+    }
+  }
+}
+
+/* Handles can sit exactly on top of one another -- drag one onto another and, with a plain
+   "nearest wins" test, the buried one can never be picked up again. John, 2026-09-02: "if I move
+   the movable one on top of the light blue one, it gets permanently hidden beneath it."
+   So gather EVERY handle within the radius and rotate through them on successive grabs. */
+function fdHandleAt(wx, wy) {
+  const M = state.edit.M, r = 11 / state.edit.view.s;
+  const hits = [];
+  for (const h of state.edit.handles) {
+    if (!handleLive(h)) continue;
+    const p = M.P[h.corner];
+    if (!p) continue;
+    const d = Math.hypot(p[0] - wx, p[1] - wy);
+    if (d < r) hits.push({ h, d });
+  }
+  if (!hits.length) return null;
+  hits.sort((a, b) => a.d - b.d);
+  if (hits.length === 1) return hits[0].h;
+  // several are stacked here: pick the first one that is not the one we grabbed last time
+  const last = state.edit.lastGrabbed;
+  const next = hits.find(x => x.h.corner !== last);
+  return (next || hits[0]).h;
+}
+
+const FD_ROLE_COLOR = { free: '#4ec9a8', forced: '#e0576e', splitForced: '#e59b4b',
+                        splitFree: '#7fa1ff', flat: '#9aa0b0' };
+
+function drawFd(v) {
+  const M = state.edit.M, c = $('fd').getContext('2d');
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, 300, 300);
+  c.fillStyle = '#0d0f14'; c.fillRect(0, 0, 300, 300);
+  const val = v || DE.validate(M, { cheapOnly: true });
+  // Chambers shaded by their TILE ORBIT, using the same two colours as the main view, so the
+  // fundamental domain reads as a piece of the tiling rather than an abstract triangle fan.
+  // John, 2026-08-31: "can you shade in the flags of the FD so they match the tiling? Drawing the
+  // lines for the edges would be nice too."
+  const badSet = new Set(val.orientation.bad);
+  const degSet = new Set(val.orientation.degenerate);
+  const tileOrbits = [...new Set(Array.from({ length: M.D.size }, (_, i) => M.I.nodes[i].op[2]))].sort((a, b) => a - b);
+  for (let f = 1; f <= M.D.size; f++) {
+    const pts = [0, 1, 2].map(t => fdToS(M.P[M.K.cornOf(f, t)]));
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+    c.lineTo(pts[1][0], pts[1][1]); c.lineTo(pts[2][0], pts[2][1]); c.closePath();
+    const oi = tileOrbits.indexOf(M.I.nodes[f - 1].op[2]);
+    c.fillStyle = badSet.has(f) ? 'rgba(224,87,110,.55)'
+                : degSet.has(f) ? 'rgba(224,87,110,.25)'
+                : (oi === 0 ? 'rgba(61,79,143,.85)' : 'rgba(138,99,48,.85)');
+    c.fill();
+    c.strokeStyle = 'rgba(232,234,240,.10)'; c.lineWidth = 0.6; c.stroke();
+  }
+  // The tiling's own edges: inside each chamber the tile boundary runs from the tiling VERTEX
+  // (corner type 0) to the EDGE MIDPOINT (type 1). Drawn straight -- the orbit curves live in world
+  // space on the full tiling, and are not re-derived per chamber here.
+  c.strokeStyle = 'rgba(232,234,240,.55)'; c.lineWidth = 1.4;
+  for (let f = 1; f <= M.D.size; f++) {
+    const a = fdToS(M.P[M.K.cornOf(f, 0)]), b = fdToS(M.P[M.K.cornOf(f, 1)]);
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+  }
+  // boundary walk; the two copies of one cut edge share a colour, so equal length is visible
+  const n = M.n;
+  for (let j = 0; j < n; j++) {
+    const a = fdToS(M.P[M.walk[j].corner]), b = fdToS(M.P[M.walk[(j + 1) % n].corner]);
+    const edge = M.walk[j].edge;
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
+    if (M.K.isMirror[edge]) { c.strokeStyle = '#e8eaf0'; c.lineWidth = 3; }
+    else { c.strokeStyle = `hsl(${(edge * 67) % 360} 70% 62%)`; c.lineWidth = 2.5; }
+    c.stroke();
+  }
+  // handles -- squares change the DIMENSIONS (the skeleton), circles only the tile shape.
+  // Whatever is inert in the current mode is drawn faint, so it is obvious before you drag which
+  // kind of change you are about to make.
+  for (const h of state.edit.handles) {
+    const p = M.P[h.corner]; if (!p) continue;
+    const q = fdToS(p);
+    // faint only for the three skeleton corners in Dimensions mode -- they are drawn again, larger,
+    // as the skeleton itself, so the small marker underneath would just be noise
+    c.globalAlpha = handleLive(h) ? 1 : 0.18;
+    c.beginPath();
+    if (h.kind === 'interior') c.arc(q[0], q[1], 5.5, 0, 2 * Math.PI);
+    else c.rect(q[0] - 5.5, q[1] - 5.5, 11, 11);
+    c.fillStyle = FD_ROLE_COLOR[h.role] || '#9aa0b0';
+    c.fill();
+    c.strokeStyle = '#0d0f14'; c.lineWidth = 1.5; c.stroke();
+    // what the group lets this point do: a bar along the mirror it may slide on, or a hollow
+    // centre when it is fixed outright (two mirrors, or a rotation centre)
+    if (h.con && h.con.kind === 'line') {
+      const d = h.con.dir, L = 11;
+      c.beginPath();
+      c.moveTo(q[0] - d[0] * L, q[1] + d[1] * L);
+      c.lineTo(q[0] + d[0] * L, q[1] - d[1] * L);
+      c.strokeStyle = 'rgba(232,234,240,.8)'; c.lineWidth = 1.6; c.stroke();
+    } else if (h.con && h.con.kind === 'pinned') {
+      c.beginPath(); c.arc(q[0], q[1], 2.4, 0, 2 * Math.PI);
+      c.fillStyle = '#0d0f14'; c.fill();
+    }
+    c.globalAlpha = 1;
+  }
+  // The lattice skeleton: the cell whose shape IS "the dimensions", plus its (at most two) handles.
+  if (state.edit.mode === 'dimensions') {
+    const hs = latticeHandles();
+    const anchor = hs.find(h => h.kind === 'anchor');
+    // spokes from the fixed corner to each control, so it reads as a skeleton on the domain
+    if (anchor) for (const h of hs) {
+      if (h === anchor) continue;
+      const a = fdToS(anchor.p), b = fdToS(h.p);   // spokes join the true points
+      c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
+      c.strokeStyle = 'rgba(224,87,110,.75)'; c.lineWidth = 2; c.setLineDash([5, 4]);
+      c.stroke(); c.setLineDash([]);
+    }
+    for (const h of hs) {
+      const q = fdToS(h.dp || h.p);
+      if (h.off && (h.off[0] || h.off[1])) {           // stalk: which point this control belongs to
+        const t = fdToS(h.p);
+        c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(q[0], q[1]);
+        c.strokeStyle = 'rgba(140,150,170,.85)'; c.lineWidth = 1.25; c.stroke();
+        c.beginPath(); c.arc(t[0], t[1], 1.6, 0, 2 * Math.PI);
+        c.fillStyle = 'rgba(140,150,170,.9)'; c.fill();
+      }
+      c.beginPath(); c.arc(q[0], q[1], h.fixed ? 6 : 8.5, 0, 2 * Math.PI);
+      c.fillStyle = h.kind === 'anchor' ? '#e0576e' : (h.kind === 'sizer' ? '#7fa1ff' : '#e59b4b');
+      c.fill(); c.strokeStyle = '#0d0f14'; c.lineWidth = 2; c.stroke();
+    }
+  }
+
+  // read-out: the orbifold and the live per-orbit angle sums against what they must total
+  const t = TY[state.id];
+  const rows = val.angles.perOrbit.map(o =>
+    `orbit ${o.orbit}: ${(o.sum * 180 / Math.PI).toFixed(1)}&deg; / ${(o.target * 180 / Math.PI).toFixed(1)}&deg;`);
+  let msg;
+  if (val.ok) msg = '<span class="good">valid</span>';
+  else if (!val.orientation.ok) msg = `<span class="bad">chamber ${val.orientation.bad.slice(0, 3).join(', ')} inverted</span>`;
+  else if (!val.simple.ok) msg = '<span class="bad">boundary crosses itself</span>';
+  else if (!val.congruence.ok) msg = `<span class="bad">cut edge copies differ ${(val.congruence.worstRel * 100).toFixed(1)}%</span>`;
+  else msg = `<span class="bad">angle sum off by ${(val.angles.worstAbs * 180 / Math.PI).toFixed(2)}&deg;</span>`;
+  const m = state.edit.metrics;
+  // Show the lattice explicitly -- "the dimensions" as numbers, with a marker when they have moved
+  // from where they started, so a shape edit can be seen not to have touched them.
+  const L = state.edit.lattice, L0 = state.edit.latticeRef || state.edit.lattice0;
+  let latTxt = '';
+  if (state.edit.dragInfo) {
+    latTxt = ` &nbsp; <b>${state.edit.dragInfo}</b>`;
+  } else if (L) {
+    const chg = L0 && (Math.abs(L.a - L0.a) > 1e-9 ||
+                       (L.b != null && L0.b != null && Math.abs(L.b - L0.b) > 1e-9) ||
+                       (L.angleDeg != null && L0.angleDeg != null && Math.abs(L.angleDeg - L0.angleDeg) > 1e-7));
+    latTxt = ` &nbsp; lattice <b>${L.a.toFixed(3)}</b>` +
+             (L.b != null ? ` &times; <b>${L.b.toFixed(3)}</b>` : '') +
+             (L.angleDeg != null ? ` at <b>${L.angleDeg.toFixed(1)}&deg;</b>` : '') +
+             (chg ? ' <span class="bad">(changed)</span>' : ' <span class="good">(unchanged)</span>');
+  }
+  // In Dimensions mode the live handles are the lattice skeleton's, not the FD corners'.
+  const nLive = state.edit.handles.filter(handleLive).length +
+    (state.edit.mode === 'dimensions' ? latticeHandles().filter(h => !h.fixed).length : 0);
+  const lcF = state.edit.lc ? state.edit.lc.freedom : null;
+  const noneLive = nLive === 0 ? ` &nbsp; <span class="bad">nothing movable on this type</span>`
+    : (state.edit.mode === 'dimensions' ? ` &nbsp; lattice freedom <b>${lcF}</b>` : '');
+  const deg = val.orientation.degenerate.length
+    ? ` &nbsp; <span class="bad">${val.orientation.degenerate.length} collapsed chamber(s)</span>` : '';
+  $('fdhud').innerHTML = `<b>${t ? t.orb : ''}</b> &nbsp; ${msg}` +
+    (m ? ` &nbsp; area ratio <b>${m.areaRatio.toFixed(2)}</b>` : '') + latTxt + deg + noneLive +
+    '<br>' + rows.join(' &nbsp; ');
+}
+
+/* Drag: pin the anchor, reject anything invalid, and never leave a broken shape behind.
+   John, 2026-08-29: "I would pin the position as I drag. On release, then I might
+   recentre/resize. (Note that if I draw outside the box, this could be allowed, though we'd have
+   to resize.)" -- so the pane does NOT clamp to its own bounds; it refits on release. */
+$('fd').addEventListener('mousedown', e => {
+  if (!editActive()) return;
+  const r = $('fd').getBoundingClientRect();
+  const w = fdToW(e.clientX - r.left, e.clientY - r.top);
+  let h = null;
+  if (state.edit.mode === 'dimensions') {
+    const r2 = 12 / state.edit.view.s;
+    const cands = [];
+    for (const lh of latticeHandles()) {
+      if (lh.fixed) continue;                                  // the anchor is shown, not dragged
+      const dp = lh.dp || lh.p;
+      const d = Math.hypot(dp[0] - w[0], dp[1] - w[1]);
+      if (d < r2) cands.push({ id: 'lat:' + lh.kind, d, h: { lattice: lh } });
+    }
+    const corner = fdHandleAt(w[0], w[1]);
+    if (corner) cands.push({ id: 'c:' + corner.corner, d: 0.5 * r2, h: corner });
+    if (cands.length) {
+      cands.sort((a, b) => a.d - b.d);
+      const pick = cands.find(x => x.id !== state.edit.lastGrabbedId) || cands[0];
+      state.edit.lastGrabbedId = pick.id;
+      h = pick.h;
+    }
+  }
+  if (!h) h = fdHandleAt(w[0], w[1]);
+  if (!h) return;
+  state.edit.undo.push(state.edit.M.P.map(p => p.slice()));
+  if (state.edit.undo.length > 50) state.edit.undo.shift();
+  state.edit.latticeRef = state.edit.lattice || state.edit.lattice0;
+  if (h && h.corner != null) state.edit.lastGrabbed = h.corner;
+  // the ratio drag needs its axis/extent held at the drag-start values (that is what keeps it
+  // monotone); the DRAWN handle is refreshed separately, below, so it still follows the domain
+  state.edit.dc0 = Object.assign({}, state.edit.dc);
+  state.edit.dcHeld = false;
+  const P0 = state.edit.M.P.map(p => (p ? p.slice() : p));
+  /* Pin the view for the duration of the drag. The constrained re-solve re-places the boundary
+     with a procrustes fit, so the whole domain can TRANSLATE in world space even when the point
+     you are holding is mathematically fixed -- measured 16px of vertical slide on #363, which
+     reads as the handle escaping the cursor. Holding one world point at one screen point for the
+     whole gesture removes it; mouse-up refits as before. John: "I would pin the position as I
+     drag. On release, then I might recenter/resize." */
+  const pinIdx = state.edit.dc ? state.edit.dc.anchorCorner : null;   // the transform's fixed point
+  state.edit.drag = { h, P0,
+    latOff: (h.lattice && h.lattice.off) ? h.lattice.off.slice() : [0, 0],
+    pinIdx,
+    pinScreen: (pinIdx != null && P0[pinIdx]) ? fdToS(P0[pinIdx]) : null,
+    con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null };
+  state.edit.dragInfo = null;
+  e.preventDefault();
+});
+window.addEventListener('mousemove', e => {
+  if (!editActive() || !state.edit.drag) return;
+  const M = state.edit.M, h = state.edit.drag.h;
+  const r = $('fd').getBoundingClientRect();
+  let w = fdToW(e.clientX - r.left, e.clientY - r.top);
+  const lo = state.edit.drag.latOff;
+  if (lo && (lo[0] || lo[1])) w = [w[0] - lo[0], w[1] - lo[1]];   // the disc is nudged; the point is not
+  const snapshot = M.P.map(p => p.slice());
+  /* Route by what the handle actually IS:
+       interior            -- free, no constraint;
+       slider              -- confined to its mirror line, and moving it is an AFFINE STRETCH of the
+                              whole domain, so the interior rides along instead of being left behind;
+       free boundary(blue) -- moves anywhere, its partner instance follows under the cut pairing, and
+                              the interior is repaired afterwards;
+       anything else       -- the constrained (angles + congruence + closure) solve. */
+  if (h.lattice) {
+    // Always transform the DRAG-START snapshot. Applying the map to the current (already
+    // transformed) state compounds it every frame -- that is what made this judder and collapse
+    // the domain to a line.
+    const dc0 = state.edit.dc0 || state.edit.dc;
+    const dr = DE.dragDimension(M, dc0, state.edit.drag.P0, h.lattice.kind, w);
+    /* Keep the ratio handle under the pointer WHILE dragging. An aspect stretch also moves the
+       sizer, so the axis the handle is constrained to rotates mid-drag; re-deriving the handle from
+       the moved axis is what made it trail the mouse. During the drag we place it from the FROZEN
+       drag-start frame -- for freedom 2 that is the pointer itself, for freedom 1 the pointer
+       projected onto the frozen axis (it is a one-parameter control, so it can only live on that
+       line). On mouse-up `dimensionControls` recomputes everything from scratch. */
+    if (dr && dr.ok && h.lattice.kind === 'shape' && state.edit.dc) {
+      if (state.edit.dc.shapeCorner != null) {
+        DE.refreshShapeHandle(M, state.edit.dc, false);      // rides its own corner
+      } else if (state.edit.dc.freedom === 2) {
+        state.edit.dc.shapePoint = [w[0], w[1]];
+      } else if (dc0.shapeAxis) {
+        const A0 = state.edit.drag.P0[dc0.anchorCorner], ax = dc0.shapeAxis;
+        const t = (w[0] - A0[0]) * ax[0] + (w[1] - A0[1]) * ax[1];
+        state.edit.dc.shapePoint = [A0[0] + ax[0] * t, A0[1] + ax[1] * t];
+        state.edit.dc.shapeAxis = ax;
+      }
+      state.edit.dcHeld = true;                 // do not let applyRealization re-derive it below
+    }
+    state.edit.dragInfo = dr && dr.ok
+      ? (dr.k !== undefined ? `aspect &times;${dr.k.toFixed(3)}`
+        : dr.scale !== undefined ? `scale &times;${dr.scale.toFixed(3)}` : 'shape')
+      : null;
+  } else if (h.kind === 'interior') {
+    DE.dragInterior(M, h.corner, w);                       // never touches the lattice
+  } else {
+    /* Every non-skeleton corner reshapes tiles: hold the cut-edge pairings fixed and repair the
+       interior. The DIMENSIONS are changed only through the three skeleton handles, so grabbing an
+       ordinary point can no longer move the lattice out from under you.
+       Caveat, and the HUD reports it: a corner that sits on a MIRROR edge defines that mirror line,
+       so moving it does still re-derive that generator -- "(changed)" will show for those. */
+    const snap = M.P.map(p => (p ? p.slice() : p));
+    // a point on a mirror slides ALONG that mirror; a point fixed by a rotation cannot move
+    const con = state.edit.drag.con;
+    const wc = DE.applyConstraint(con, snap[h.corner], w);
+    if (con && con.kind === 'pinned') { drawFd(); return; }
+    /* Move it by the least-norm motion that achieves the REACHABLE part of the request. Half of all
+       boundary handles (measured: 384 of 765) can only travel along ONE line -- asking those to
+       chase a 2-D pointer is what made the domain jitter and left the handle sitting away from the
+       cursor. John, on #442: "Some make it jitter... We could restrict its movement to be along the
+       line it's on." `dragConstrained` does exactly that, and holds the pins while it does it. */
+    const dcr = DE.dragConstrained(M, h.walkIndex, wc, {});
+    if (dcr && dcr.ok) {
+      state.edit.dragInfo = dcr.rank === 1 ? 'slides along one line' : null;
+      if (!DE.orientationCheck(M).ok) DE.untangle(M, {});
+      const vq = DE.validate(M, { cheapOnly: true });
+      if (vq.ok) {
+        const rs = applyRealization();
+        if (rs.ok) { state.edit.lastGood = M.P.map(q => q.slice()); state.edit.metrics = DE.metrics(rs.dev); }
+        else { M.P = snapshot; }
+      }
+      holdView();
+      drawFd(vq);
+      return;
+    }
+    if (dcr && !dcr.ok) { state.edit.dragInfo = 'this point cannot move'; drawFd(); return; }
+    DE.dragFree(M, h.walkIndex, wc);
+    if (!DE.angleCheck(M).ok) {
+      /* This corner's angle is individually FORCED (its orbit has one instance), so holding the
+         pairings fixed cannot move it -- the whole boundary has to re-solve. #19 (*632) is the pure
+         case: no interior corners, a rigid lattice, and all five corners angle-forced, so the ONLY
+         freedom is in the side lengths and the constrained solve is the only thing that can reach
+         it. Without this fallback nothing on that type could change the tile size ratio. */
+      for (let i = 0; i < snap.length; i++) if (snap[i]) M.P[i] = snap[i].slice();
+      DE.dragBoundary(M, h.walkIndex, wc, { anchorIdx: h.walkIndex === 0 ? 1 : 0 });
+    }
+    if (!DE.orientationCheck(M).ok) DE.untangle(M, {});
+  }
+  const val = DE.validate(M, { cheapOnly: true });
+  if (val.ok) {
+    const res = applyRealization();
+    if (res.ok) {
+      state.edit.lastGood = M.P.map(p => p.slice());
+      state.edit.metrics = DE.metrics(res.dev);
+    } else { M.P = snapshot; }
+  }
+  holdView();
+  drawFd(val);
+});
+/* Slide the view so the ANCHOR -- the fixed point every dimension transform is built around --
+   stays on the same screen pixel for the whole gesture. Pinning the dragged handle instead would
+   freeze it under the cursor; pinning the anchor cancels only the procrustes translation, which is
+   the part that has no business moving. Scale is untouched, so nothing zooms mid-gesture. */
+function holdView() {
+  const d = state.edit.drag;
+  if (!d || !d.pinScreen || d.pinIdx == null) return;
+  const now = state.edit.M.P[d.pinIdx];       // the ANCHOR, not the handle being dragged
+  if (!now) return;
+  const v = state.edit.view, q = [v.ox + now[0] * v.s, v.oy - now[1] * v.s];
+  v.ox += d.pinScreen[0] - q[0];
+  v.oy += d.pinScreen[1] - q[1];
+}
+window.addEventListener('mouseup', () => {
+  if (!editActive() || !state.edit.drag) return;
+  state.edit.drag = null;
+  state.edit.dragInfo = null;
+  state.edit.dc0 = null;
+  state.edit.dcHeld = false;
+  const M = state.edit.M;
+  const val = DE.validate(M, { cheapOnly: true });
+  if (!val.ok) { M.P = state.edit.lastGood.map(p => p.slice()); applyRealization(); }   // revert
+  /* Re-derive the controls from the SETTLED domain. Without this the ratio handle keeps whatever
+     position the pointer ended at -- drag it far out and it stays far out, off the edge of the pane
+     and out of reach, because fdFit only ever saw the domain's corners. John, 2026-09-04 on #356:
+     "the yellow point got stretched so far away that I can't reach it." */
+  if (state.dev) {
+    state.edit.dc = DE.dimensionControls(M, state.dev, TY[state.id] && TY[state.id].orb);
+    state.edit.lattice = DE.latticeBasis(state.dev);
+    /* Re-record the pins from the SETTLED domain. A dimension drag is allowed to move the rotation
+       centres -- that is what changing the dimensions means -- so the configuration they must hold
+       is whatever the user just chose, not the one they started with. */
+    try { DE.setPins(M, DE.pinnedWalkPositions(M, state.dev, DE.constraintAt)); } catch (e) {}
+  }
+  fdFit();                                                                             // recentre/resize
+  drawFd();
+});
+
+$('editToggle').addEventListener('click', () => { editActive() ? endEdit() : beginEdit(); });
+$('modeDim').addEventListener('click', () => setEditMode('dimensions'));
+$('modeShape').addEventListener('click', () => setEditMode('shape'));
+$('editReset').addEventListener('click', () => {
+  if (!editActive()) return;
+  state.edit.M.P = state.edit.canonical.map(p => p.slice());
+  state.edit.lastGood = state.edit.M.P.map(p => p.slice());
+  const res = applyRealization();
+  if (res.ok) state.edit.metrics = DE.metrics(res.dev);
+  fdFit(); drawFd();
+});
+$('editUndo').addEventListener('click', () => {
+  if (!editActive() || !state.edit.undo.length) return;
+  state.edit.M.P = state.edit.undo.pop();
+  state.edit.lastGood = state.edit.M.P.map(p => p.slice());
+  const res = applyRealization();
+  if (res.ok) state.edit.metrics = DE.metrics(res.dev);
+  fdFit(); drawFd();
+});
+$('editRecenter').addEventListener('click', () => { if (editActive()) { fdFit(); drawFd(); fit(); draw(); } });
+
+window.addEventListener('resize', resize);
+fillTypes();
+resize();
+</script>
+</body>
+</html>
