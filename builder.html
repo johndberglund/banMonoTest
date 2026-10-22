@@ -68,18 +68,6 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
 #hud b{color:var(--ink)}
 /* Fundamental-domain editor pane (Tegula-style): its own canvas and view transform, so the main
    canvas's pan/zoom and picking are untouched. */
-#fdwrap{position:absolute;left:12px;bottom:12px;background:rgba(18,20,26,.94);
-  border:1px solid var(--line);border-radius:4px;padding:8px}
-#fd{width:300px;height:300px;cursor:default;border-radius:2px}
-/* FIXED height, and it scrolls if it has to. The panel is anchored by its BOTTOM edge, so any
-   growth in this read-out lifts the canvas with it -- and it does grow the instant a drag
-   starts, when the "(changed)" marker appears. That shoved the whole domain 16px out from
-   under the cursor on the first frame of every drag. */
-#fdhud{font-size:11px;color:var(--dim);margin-top:6px;max-width:300px;line-height:1.45;height:96px;overflow-y:auto;
-  font-variant-numeric:tabular-nums}
-#fdhud b{color:var(--ink)}
-#fdhud .bad{color:#e0576e}
-#fdhud .good{color:#4ec9a8}
 .grouplabel{font-size:11px;color:var(--dim);margin:10px 0 4px}
 .group{border:1px solid var(--line);border-left-width:3px;border-radius:3px;padding:8px 10px;
   margin-bottom:8px;background:#1d212a}
@@ -96,7 +84,6 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
 <body>
 <div id="stage"><canvas id="cv"></canvas><div id="hud">—</div>
   <div id="zoomBtns"><button id="zoomIn" title="Zoom in" aria-label="Zoom in">+</button><button id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button></div>
-  <div id="fdwrap" hidden><canvas id="fd" width="300" height="300"></canvas><div id="fdhud">—</div></div>
 </div>
 
 <div id="panel">
@@ -140,23 +127,16 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
   to move the fundamental domain's corners and reshape the tiles.</div>
   <button id="editToggle">Edit shape</button>
   <div id="editBtns" hidden>
-    <div class="grouplabel">What a drag changes</div>
-    <div style="display:flex;gap:6px">
-      <button id="modeDim" style="flex:1">Dimensions</button>
-      <button id="modeShape" style="flex:1">Tile shape</button>
-    </div>
-    <p class="hint" id="modeHint">Dimensions: the skeleton — moving these re-derives the side
-    pairings, so the lattice changes. Tile shape: the pairings are held fixed, so the lattice
-    cannot change and only the tiles are reshaped.</p>
     <p class="hint">In <b>The two tiles</b> panel above: drag an orange dot to move a corner. Move over an edge to light up its
     group; drag a handle to move that point, drag the curve itself to add one, right-click a handle to remove it. Every matching
     edge follows. Blue handles are on the derived half of a U or S curve; grey ones are pinned by the edge type.</p>
     <label style="display:flex;align-items:center;gap:7px;margin:4px 0;cursor:pointer">
-      <input type="checkbox" id="showFd" style="width:auto;padding:0"><span>Show the fundamental domain (lattice and size handles)</span>
+      <input type="checkbox" id="latticeFree" checked style="width:auto;padding:0">
+      <span>Corners can change the lattice (off: only the tiles change)</span>
     </label>
-    <button id="editReset">Reset to canonical</button>
+    <button id="editReset">Reset to the starting shape</button>
+    <button id="curveReset">Reset curves</button>
     <button id="editUndo">Undo drag</button>
-    <button id="editRecenter">Recentre / resize</button>
   </div>
 
   <h2>1 · Build</h2>
@@ -211,6 +191,7 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
 <script src="js/tiler_curves.js"></script>
 <script src="js/dsym_edit.js"></script>
 <script src="js/tiling_figure.js"></script>
+<script src="data/figure_shapes.js"></script>
 <script>
 'use strict';
 const TY = window.DSYM_TYPES, DD = window.DrawDsym, DF = window.DsymDeform,
@@ -300,6 +281,22 @@ function buildEdgeCurves(d) {
   return window.TilingFigure.buildEdgeCurves(d, null, choice);
 }
 
+// Open a type the way its figure draws it (John, 2026-10-22: "I would expect the proof builder to use the same figures like we
+// are making in the figures_review app"): data/figure_shapes.js, written by program7/app_tools/gen_figures.js --shapes, holds
+// each figure's reshaped domain and its curves. Used only if it matches this type's domain; otherwise the default stays.
+function useFigureShape(id) {
+  const F = window.FIGURE_SHAPES && window.FIGURE_SHAPES[id];
+  if (!F || !state.dev) return;
+  state.curveEdits = JSON.parse(JSON.stringify(F.curves || {}));
+  if (!F.P || !state.dev.R) return;
+  try {
+    const R = state.dev.R, M = DE.buildEditModel(R.D, R.I, R.K, R.C);
+    if (M.P.length !== F.P.length || (F.fp && F.fp !== M.fingerprint.hash)) return;
+    M.P = F.P.map(p => (p ? p.slice() : p));
+    const dev = DD.develop(TY[id].sym, { maxCopies: 160, realization: { D: M.D, I: M.I, K: M.K, C: DE.toC(M) } });
+    if (dev && dev.complete.length) { state.dev = dev; state.shape = { P: M.P.map(p => (p ? p.slice() : p)), fingerprint: { hash: M.fingerprint.hash } }; }
+  } catch (e) { /* keep the default shape */ }
+}
 function load(id) {
   state.id = id;
   state.curveEdits = {};                    // hand-edited curves belong to the type they were drawn on
@@ -310,6 +307,7 @@ function load(id) {
   if (state.edit) endEdit();          // the edit model belongs to the OLD type's disk indexing
   try { state.dev = DD.develop(TY[id].sym, { maxCopies: 160 }); }
   catch (e) { state.dev = null; }
+  useFigureShape(id);
   state.edgeCurves = buildEdgeCurves(state.dev);
   resetPicks();
   fit();
@@ -699,9 +697,10 @@ function drawPair() {
   const sidesOf = o => (d.complete.find(t => t.orbit === o) || { pts: [] }).pts.length;
   const ratio = `${nA} blue (${sidesOf(tc.A)}-sided) to ${nB} brown (${sidesOf(tc.B)}-sided)`;
   if (!tiles) { $('pairHint').textContent = `Could not find a connected patch in this drawing. The tiles occur ${ratio}.`; return; }
-  $('pairHint').textContent = mode === 'one'
+  $('pairHint').textContent = (mode === 'one'
     ? `One tile from each class. In the tiling they occur ${ratio}.`
-    : `${nA + nB} tiles in their true proportion: ${ratio}.`;
+    : `${nA + nB} tiles in their true proportion: ${ratio}.`)
+    + (state.edit && state.edit.dragInfo ? ` — ${state.edit.dragInfo}.` : '');
   const curvesOn = state.edgeCurves && $('curveToggle').checked;
   const curveMap = curvesOn ? curveEdgeMap(state.edgeCurves) : new Map();
   const bounds = tiles.map(t => curvesOn ? tileBoundaryWorldPts(t.pts, curveMap) : t.pts);
@@ -728,7 +727,7 @@ function drawPair() {
   // dragging one drags the domain corner behind it (tile.vaddr), so every copy of that corner moves together.
   state.pair.dots = [];
   if (editActive()) {
-    const live = new Set(state.edit.handles.filter(handleLive).map(h => h.corner));
+    const live = state.edit.movable || new Set(state.edit.handles.filter(handleLive).map(h => h.corner));
     tiles.forEach(t => t.pts.forEach((p, i) => {
       const c = t.vaddr && t.vaddr[i] && t.vaddr[i].corner;
       if (c == null || !live.has(c)) return;
@@ -1750,41 +1749,7 @@ function editActive() { return !!state.edit; }
 /* Readable from outside, so a script (or a test) can inspect and drive the editor rather than
    having to scrape the canvas -- same reason aniso.js exposes specify()'s arrays. */
 window.__edit = () => state.edit;
-/* The three dimension controls are not in state.edit.handles (they are derived per frame), so
-   expose them, with both the true point `p` and the nudged drawn point `dp`, in screen space. */
-window.__latHandles = () => {
-  const r = $('fd').getBoundingClientRect();
-  return latticeHandles().map(h => {
-    const a = fdToS(h.p), b = fdToS(h.dp || h.p);
-    return { kind: h.kind, fixed: !!h.fixed, p: h.p.slice(), dp: (h.dp || h.p).slice(),
-             x: r.left + a[0], y: r.top + a[1], dx: r.left + b[0], dy: r.top + b[1] };
-  });
-};
-window.__editHandleScreen = i => {
-  const h = state.edit.handles[i], p = state.edit.M.P[h.corner], q = fdToS(p);
-  const r = $('fd').getBoundingClientRect();
-  return { corner: h.corner, kind: h.kind, role: h.role, x: r.left + q[0], y: r.top + q[1] };
-};
 
-function fdFit() {
-  const M = state.edit.M;
-  /* Fit the FUNDAMENTAL DOMAIN only. The lattice cell used to be included here so the old
-     off-domain handles stayed visible, but the cell is |group| times bigger than the domain, so it
-     squeezed the FD down to a speck in the corner. Every control now sits on the domain itself, so
-     there is nothing off-domain left to keep in view. */
-  const pts = M.P.filter(Boolean).slice();
-  // the ratio handle is not one of M.P, so include it or it can sit outside the pane
-  if (state.edit.dc && state.edit.dc.shapePoint) pts.push(state.edit.dc.shapePoint);
-  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) || 1;
-  const s = 300 / (span * 1.18);                       // a little room to drag outside the box
-  state.edit.view = { s, ox: 150 - cx * s, oy: 150 + cy * s };
-}
-const fdToS = p => [state.edit.view.ox + p[0] * state.edit.view.s,
-                    state.edit.view.oy - p[1] * state.edit.view.s];
-const fdToW = (x, y) => [(x - state.edit.view.ox) / state.edit.view.s,
-                         (state.edit.view.oy - y) / state.edit.view.s];
 
 function beginEdit() {
   if (!state.dev || !state.dev.R) return;
@@ -1810,15 +1775,14 @@ function beginEdit() {
     undo: [],
   };
   state.edit.lattice0 = DE.latticeBasis(state.dev);
+  { const c = {}; for (const t of state.dev.complete) c[t.orbit] = (c[t.orbit] || 0) + 1; state.edit.counts0 = JSON.stringify(c); }
   state.edit.lc = DE.latticeControls(M, state.dev, TY[state.id] && TY[state.id].orb);
   state.edit.dc = DE.dimensionControls(M, state.dev, TY[state.id] && TY[state.id].orb);
   state.edit.metrics = DE.metrics(state.dev);
-  fdFit();
-  $('fdwrap').hidden = !$('showFd').checked;    // the two-tiles panel is the editor now; the domain pane is optional
+  state.edit.mode = 'shape';     // tile shape only: the panel's corners never move the lattice (see dragCornerTo)
+  state.edit.movable = movableCorners();
   $('editBtns').hidden = false;
   $('editToggle').textContent = 'Close editor';
-  setEditMode('dimensions');
-  drawFd();
 }
 
 /* Two kinds of edit, kept apart on purpose. John, 2026-08-30: "I'd like a clearer difference
@@ -1827,75 +1791,12 @@ function beginEdit() {
    the end result will be."  The distinction is exact: a drag changes the lattice iff it re-derives
    the side-pairing transforms. Holding them fixed (dragFree / interior corners) reshapes tiles with
    the lattice untouched; the constrained solve moves the lattice. */
-function setEditMode(m) {
-  if (!state.edit) return;
-  state.edit.mode = m;
-  const on = 'background:#29344a;border-color:#4a5a7a', off = '';
-  $('modeDim').style.cssText = 'flex:1;' + (m === 'dimensions' ? on : off);
-  $('modeShape').style.cssText = 'flex:1;' + (m === 'shape' ? on : off);
-  $('modeHint').textContent = m === 'dimensions'
-    ? 'Dimensions: drag a square handle (the skeleton). These re-derive the side pairings, so the lattice changes.'
-    : 'Tile shape: the side pairings are held fixed, so the lattice cannot change — only the tiles are reshaped. Round handles are always free.';
-  drawFd();
-}
 
-// Which handles respond in the current mode.
-/* Dimensions mode now shows ONLY the lattice skeleton -- two handles, per John 2026-08-31: "we
-   don't need 12 square control points. There isn't that much variability in the shape ... one
-   control point slide for aspect, and another move anywhere to resize (scaling) and rotate. I can't
-   see any way you'd want more than these two control points." The lattice freedom is 0, 1 or 2 by
-   orbifold, so the aspect handle simply does not appear when the lattice is rigid. */
-/* Every movable point stays movable in BOTH modes. John, 2026-09-02: "I notice that we can't move
-   any of the other points - just the skeleton for the dimensions of the FD. Sometimes we will need
-   to be able to move the other movable points around."  The mode now decides only what the THREE
-   SKELETON corners do when grabbed -- dimension change in Dimensions mode, ordinary tile-shape move
-   in Tile shape mode. Every other corner, and every interior point, is always a shape handle. */
-function skeletonCorners() {
-  const dc = state.edit && state.edit.dc;
-  if (!dc) return [];
-  // the ANCHOR is only a reference origin for dimension drags -- it is still an ordinary movable
-  // point (constrained to its mirror, if it has one), so it is not reserved here
-  return [dc.sizerCorner].filter(c => c != null);   // the ratio handle is not a corner
-}
-function handleLive(h) {
-  if (!state.edit) return false;
-  if (state.edit.mode !== 'dimensions') return true;    // Tile shape: everything is a shape handle
-  return skeletonCorners().indexOf(h.corner) < 0;       // Dimensions: skeleton is grabbed separately
-}
+function handleLive(h) { return !!state.edit; }     // every corner handle is a tile-shape handle
 
 // The two lattice handles, in screen space, or [] when not in Dimensions mode.
-function latticeHandles() {
-  if (!state.edit || state.edit.mode !== 'dimensions' || !state.edit.dc) return [];
-  const dc = state.edit.dc, P = state.edit.M.P, out = [];
-  out.push({ kind: 'anchor', fixed: true, p: P[dc.anchorCorner] });
-  if (dc.shapePoint) out.push({ kind: 'shape', p: dc.shapePoint });
-  out.push({ kind: 'sizer', p: P[dc.sizerCorner] });
-  const hs = out.filter(h => h.p);
-  /* All three controls now sit ON corners of the domain (John, on #363: "we could always have the
-     yellow, red and blue points associated with some point, even if we offset them to make both
-     clickable"). A control drawn exactly on its corner would bury that corner's own handle, so
-     nudge the DISC 11px off to the side, with a stalk back to the true point. The offset is
-     screen-space only -- `p` stays exact, and the drag subtracts `off` from the pointer -- so the
-     geometry is untouched. */
-  const A = hs[0] && hs[0].p, sc = (state.edit.view && state.edit.view.s) || 1, d = 11 / sc;
-  for (const h of hs) {
-    h.off = [0, 0];
-    const buried = state.edit.M.P.some((q, i) =>
-      q && i !== dc.shapeCorner && Math.hypot(q[0] - h.p[0], q[1] - h.p[1]) < 1e-9) ||
-      (h.kind === 'shape' && dc.shapeCorner != null);
-    if (!buried || !A) continue;
-    let ax = [h.p[0] - A[0], h.p[1] - A[1]];
-    const L = Math.hypot(ax[0], ax[1]);
-    if (L < 1e-9) { const B = hs[hs.length - 1].p; ax = [B[0] - A[0], B[1] - A[1]]; }
-    const L2 = Math.hypot(ax[0], ax[1]) || 1;
-    h.off = [-ax[1] / L2 * d, ax[0] / L2 * d];        // perpendicular to the spoke
-  }
-  for (const h of hs) h.dp = [h.p[0] + h.off[0], h.p[1] + h.off[1]];
-  return hs;
-}
 function endEdit() {
   state.edit = null;
-  $('fdwrap').hidden = true;
   $('editBtns').hidden = true;
   $('editToggle').textContent = 'Edit shape';
 }
@@ -1947,343 +1848,122 @@ function refreshPicks(dev) {
   }
 }
 
-/* Handles can sit exactly on top of one another -- drag one onto another and, with a plain
-   "nearest wins" test, the buried one can never be picked up again. John, 2026-09-02: "if I move
-   the movable one on top of the light blue one, it gets permanently hidden beneath it."
-   So gather EVERY handle within the radius and rotate through them on successive grabs. */
-function fdHandleAt(wx, wy) {
-  const M = state.edit.M, r = 11 / state.edit.view.s;
-  const hits = [];
+// Which domain corners can move at all under the tile-shape rules: try a small step in four directions on a copy of the model.
+// Only those get an orange dot, so no dot sits there doing nothing (a corner fixed by a rotation, or whose angle is forced).
+function movableCorners() {
+  const M = state.edit.M, L0 = state.edit.lattice0, out = new Set();
+  const xs = M.P.filter(Boolean).map(p => p[0]), ys = M.P.filter(Boolean).map(p => p[1]);
+  const step = 0.02 * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1e-6);
   for (const h of state.edit.handles) {
-    if (!handleLive(h)) continue;
-    const p = M.P[h.corner];
-    if (!p) continue;
-    const d = Math.hypot(p[0] - wx, p[1] - wy);
-    if (d < r) hits.push({ h, d });
+    const p0 = M.P[h.corner]; if (!p0) continue;
+    const con = DE.constraintAt(state.dev, p0);
+    if (con && con.kind === 'pinned') continue;
+    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+      const T = DE.cloneModel(M), lf = latticeFree();
+      try {
+        if (moveCorner(T, h, [p0[0] + dx * step, p0[1] + dy * step], lf)) continue;
+        if (!groupOk(T)) continue;
+        if (Math.hypot(T.P[h.corner][0] - p0[0], T.P[h.corner][1] - p0[1]) < 1e-9) continue;
+        if (!lf) {
+          const d = DD.develop(TY[state.id].sym, { maxCopies: 60, realization: { D: T.D, I: T.I, K: T.K, C: DE.toC(T) } });
+          const L = DE.latticeBasis(d);
+          if (L && L0 && L0.area && Math.abs(L.area - L0.area) > 1e-6 * L0.area) continue;
+        }
+        out.add(h.corner); break;
+      } catch (e) { /* try the next direction */ }
+    }
   }
-  if (!hits.length) return null;
-  hits.sort((a, b) => a.d - b.d);
-  if (hits.length === 1) return hits[0].h;
-  // several are stacked here: pick the first one that is not the one we grabbed last time
-  const last = state.edit.lastGrabbed;
-  const next = hits.find(x => x.h.corner !== last);
-  return (next || hits[0]).h;
+  return out;
 }
-
-const FD_ROLE_COLOR = { free: '#4ec9a8', forced: '#e0576e', splitForced: '#e59b4b',
-                        splitFree: '#7fa1ff', flat: '#9aa0b0' };
-
-function drawFd(v) {
-  const M = state.edit.M, c = $('fd').getContext('2d');
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  c.clearRect(0, 0, 300, 300);
-  c.fillStyle = '#0d0f14'; c.fillRect(0, 0, 300, 300);
-  const val = v || DE.validate(M, { cheapOnly: true });
-  // Chambers shaded by their TILE ORBIT, using the same two colours as the main view, so the
-  // fundamental domain reads as a piece of the tiling rather than an abstract triangle fan.
-  // John, 2026-08-31: "can you shade in the flags of the FD so they match the tiling? Drawing the
-  // lines for the edges would be nice too."
-  const badSet = new Set(val.orientation.bad);
-  const degSet = new Set(val.orientation.degenerate);
-  const tileOrbits = [...new Set(Array.from({ length: M.D.size }, (_, i) => M.I.nodes[i].op[2]))].sort((a, b) => a - b);
-  for (let f = 1; f <= M.D.size; f++) {
-    const pts = [0, 1, 2].map(t => fdToS(M.P[M.K.cornOf(f, t)]));
-    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
-    c.lineTo(pts[1][0], pts[1][1]); c.lineTo(pts[2][0], pts[2][1]); c.closePath();
-    const oi = tileOrbits.indexOf(M.I.nodes[f - 1].op[2]);
-    c.fillStyle = badSet.has(f) ? 'rgba(224,87,110,.55)'
-                : degSet.has(f) ? 'rgba(224,87,110,.25)'
-                : (oi === 0 ? 'rgba(61,79,143,.85)' : 'rgba(138,99,48,.85)');
-    c.fill();
-    c.strokeStyle = 'rgba(232,234,240,.10)'; c.lineWidth = 0.6; c.stroke();
-  }
-  // The tiling's own edges: inside each chamber the tile boundary runs from the tiling VERTEX
-  // (corner type 0) to the EDGE MIDPOINT (type 1). Drawn straight -- the orbit curves live in world
-  // space on the full tiling, and are not re-derived per chamber here.
-  c.strokeStyle = 'rgba(232,234,240,.55)'; c.lineWidth = 1.4;
-  for (let f = 1; f <= M.D.size; f++) {
-    const a = fdToS(M.P[M.K.cornOf(f, 0)]), b = fdToS(M.P[M.K.cornOf(f, 1)]);
-    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
-  }
-  // boundary walk; the two copies of one cut edge share a colour, so equal length is visible
-  const n = M.n;
-  for (let j = 0; j < n; j++) {
-    const a = fdToS(M.P[M.walk[j].corner]), b = fdToS(M.P[M.walk[(j + 1) % n].corner]);
-    const edge = M.walk[j].edge;
-    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
-    if (M.K.isMirror[edge]) { c.strokeStyle = '#e8eaf0'; c.lineWidth = 3; }
-    else { c.strokeStyle = `hsl(${(edge * 67) % 360} 70% 62%)`; c.lineWidth = 2.5; }
-    c.stroke();
-  }
-  // handles -- squares change the DIMENSIONS (the skeleton), circles only the tile shape.
-  // Whatever is inert in the current mode is drawn faint, so it is obvious before you drag which
-  // kind of change you are about to make.
-  for (const h of state.edit.handles) {
-    const p = M.P[h.corner]; if (!p) continue;
-    const q = fdToS(p);
-    // faint only for the three skeleton corners in Dimensions mode -- they are drawn again, larger,
-    // as the skeleton itself, so the small marker underneath would just be noise
-    c.globalAlpha = handleLive(h) ? 1 : 0.18;
-    c.beginPath();
-    if (h.kind === 'interior') c.arc(q[0], q[1], 5.5, 0, 2 * Math.PI);
-    else c.rect(q[0] - 5.5, q[1] - 5.5, 11, 11);
-    c.fillStyle = FD_ROLE_COLOR[h.role] || '#9aa0b0';
-    c.fill();
-    c.strokeStyle = '#0d0f14'; c.lineWidth = 1.5; c.stroke();
-    // what the group lets this point do: a bar along the mirror it may slide on, or a hollow
-    // centre when it is fixed outright (two mirrors, or a rotation centre)
-    if (h.con && h.con.kind === 'line') {
-      const d = h.con.dir, L = 11;
-      c.beginPath();
-      c.moveTo(q[0] - d[0] * L, q[1] + d[1] * L);
-      c.lineTo(q[0] + d[0] * L, q[1] - d[1] * L);
-      c.strokeStyle = 'rgba(232,234,240,.8)'; c.lineWidth = 1.6; c.stroke();
-    } else if (h.con && h.con.kind === 'pinned') {
-      c.beginPath(); c.arc(q[0], q[1], 2.4, 0, 2 * Math.PI);
-      c.fillStyle = '#0d0f14'; c.fill();
-    }
-    c.globalAlpha = 1;
-  }
-  // The lattice skeleton: the cell whose shape IS "the dimensions", plus its (at most two) handles.
-  if (state.edit.mode === 'dimensions') {
-    const hs = latticeHandles();
-    const anchor = hs.find(h => h.kind === 'anchor');
-    // spokes from the fixed corner to each control, so it reads as a skeleton on the domain
-    if (anchor) for (const h of hs) {
-      if (h === anchor) continue;
-      const a = fdToS(anchor.p), b = fdToS(h.p);   // spokes join the true points
-      c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
-      c.strokeStyle = 'rgba(224,87,110,.75)'; c.lineWidth = 2; c.setLineDash([5, 4]);
-      c.stroke(); c.setLineDash([]);
-    }
-    for (const h of hs) {
-      const q = fdToS(h.dp || h.p);
-      if (h.off && (h.off[0] || h.off[1])) {           // stalk: which point this control belongs to
-        const t = fdToS(h.p);
-        c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(q[0], q[1]);
-        c.strokeStyle = 'rgba(140,150,170,.85)'; c.lineWidth = 1.25; c.stroke();
-        c.beginPath(); c.arc(t[0], t[1], 1.6, 0, 2 * Math.PI);
-        c.fillStyle = 'rgba(140,150,170,.9)'; c.fill();
-      }
-      c.beginPath(); c.arc(q[0], q[1], h.fixed ? 6 : 8.5, 0, 2 * Math.PI);
-      c.fillStyle = h.kind === 'anchor' ? '#e0576e' : (h.kind === 'sizer' ? '#7fa1ff' : '#e59b4b');
-      c.fill(); c.strokeStyle = '#0d0f14'; c.lineWidth = 2; c.stroke();
-    }
-  }
-
-  // read-out: the orbifold and the live per-orbit angle sums against what they must total
-  const t = TY[state.id];
-  const rows = val.angles.perOrbit.map(o =>
-    `orbit ${o.orbit}: ${(o.sum * 180 / Math.PI).toFixed(1)}&deg; / ${(o.target * 180 / Math.PI).toFixed(1)}&deg;`);
-  let msg;
-  if (val.ok) msg = '<span class="good">valid</span>';
-  else if (!val.orientation.ok) msg = `<span class="bad">chamber ${val.orientation.bad.slice(0, 3).join(', ')} inverted</span>`;
-  else if (!val.simple.ok) msg = '<span class="bad">boundary crosses itself</span>';
-  else if (!val.congruence.ok) msg = `<span class="bad">cut edge copies differ ${(val.congruence.worstRel * 100).toFixed(1)}%</span>`;
-  else msg = `<span class="bad">angle sum off by ${(val.angles.worstAbs * 180 / Math.PI).toFixed(2)}&deg;</span>`;
-  const m = state.edit.metrics;
-  // Show the lattice explicitly -- "the dimensions" as numbers, with a marker when they have moved
-  // from where they started, so a shape edit can be seen not to have touched them.
-  const L = state.edit.lattice, L0 = state.edit.latticeRef || state.edit.lattice0;
-  let latTxt = '';
-  if (state.edit.dragInfo) {
-    latTxt = ` &nbsp; <b>${state.edit.dragInfo}</b>`;
-  } else if (L) {
-    const chg = L0 && (Math.abs(L.a - L0.a) > 1e-9 ||
-                       (L.b != null && L0.b != null && Math.abs(L.b - L0.b) > 1e-9) ||
-                       (L.angleDeg != null && L0.angleDeg != null && Math.abs(L.angleDeg - L0.angleDeg) > 1e-7));
-    latTxt = ` &nbsp; lattice <b>${L.a.toFixed(3)}</b>` +
-             (L.b != null ? ` &times; <b>${L.b.toFixed(3)}</b>` : '') +
-             (L.angleDeg != null ? ` at <b>${L.angleDeg.toFixed(1)}&deg;</b>` : '') +
-             (chg ? ' <span class="bad">(changed)</span>' : ' <span class="good">(unchanged)</span>');
-  }
-  // In Dimensions mode the live handles are the lattice skeleton's, not the FD corners'.
-  const nLive = state.edit.handles.filter(handleLive).length +
-    (state.edit.mode === 'dimensions' ? latticeHandles().filter(h => !h.fixed).length : 0);
-  const lcF = state.edit.lc ? state.edit.lc.freedom : null;
-  const noneLive = nLive === 0 ? ` &nbsp; <span class="bad">nothing movable on this type</span>`
-    : (state.edit.mode === 'dimensions' ? ` &nbsp; lattice freedom <b>${lcF}</b>` : '');
-  const deg = val.orientation.degenerate.length
-    ? ` &nbsp; <span class="bad">${val.orientation.degenerate.length} collapsed chamber(s)</span>` : '';
-  $('fdhud').innerHTML = `<b>${t ? t.orb : ''}</b> &nbsp; ${msg}` +
-    (m ? ` &nbsp; area ratio <b>${m.areaRatio.toFixed(2)}</b>` : '') + latTxt + deg + noneLive +
-    '<br>' + rows.join(' &nbsp; ');
-}
-
-/* Drag: pin the anchor, reject anything invalid, and never leave a broken shape behind.
-   John, 2026-08-29: "I would pin the position as I drag. On release, then I might
-   recentre/resize. (Note that if I draw outside the box, this could be allowed, though we'd have
-   to resize.)" -- so the pane does NOT clamp to its own bounds; it refits on release. */
-$('fd').addEventListener('mousedown', e => {
-  if (!editActive()) return;
-  const r = $('fd').getBoundingClientRect();
-  const w = fdToW(e.clientX - r.left, e.clientY - r.top);
-  let h = null;
-  if (state.edit.mode === 'dimensions') {
-    const r2 = 12 / state.edit.view.s;
-    const cands = [];
-    for (const lh of latticeHandles()) {
-      if (lh.fixed) continue;                                  // the anchor is shown, not dragged
-      const dp = lh.dp || lh.p;
-      const d = Math.hypot(dp[0] - w[0], dp[1] - w[1]);
-      if (d < r2) cands.push({ id: 'lat:' + lh.kind, d, h: { lattice: lh } });
-    }
-    const corner = fdHandleAt(w[0], w[1]);
-    if (corner) cands.push({ id: 'c:' + corner.corner, d: 0.5 * r2, h: corner });
-    if (cands.length) {
-      cands.sort((a, b) => a.d - b.d);
-      const pick = cands.find(x => x.id !== state.edit.lastGrabbedId) || cands[0];
-      state.edit.lastGrabbedId = pick.id;
-      h = pick.h;
-    }
-  }
-  if (!h) h = fdHandleAt(w[0], w[1]);
-  if (!h) return;
-  startCornerDrag(h);
-  e.preventDefault();
-});
-// Start dragging a domain handle -- from the fundamental-domain pane or from a tile corner in the two-tiles panel.
+// Start dragging the domain corner behind a tile corner in the two-tiles panel.
 function startCornerDrag(h) {
-  state.edit.undo.push(state.edit.M.P.map(p => p.slice()));
+  state.edit.undo.push(state.edit.M.P.map(p => (p ? p.slice() : p)));
   if (state.edit.undo.length > 50) state.edit.undo.shift();
-  state.edit.latticeRef = state.edit.lattice || state.edit.lattice0;
-  if (h && h.corner != null) state.edit.lastGrabbed = h.corner;
-  // the ratio drag needs its axis/extent held at the drag-start values (that is what keeps it
-  // monotone); the DRAWN handle is refreshed separately, below, so it still follows the domain
-  state.edit.dc0 = Object.assign({}, state.edit.dc);
-  state.edit.dcHeld = false;
   const P0 = state.edit.M.P.map(p => (p ? p.slice() : p));
-  /* Pin the view for the duration of the drag. The constrained re-solve re-places the boundary
-     with a procrustes fit, so the whole domain can TRANSLATE in world space even when the point
-     you are holding is mathematically fixed -- measured 16px of vertical slide on #363, which
-     reads as the handle escaping the cursor. Holding one world point at one screen point for the
-     whole gesture removes it; mouse-up refits as before. John: "I would pin the position as I
-     drag. On release, then I might recenter/resize." */
-  const pinIdx = state.edit.dc ? state.edit.dc.anchorCorner : null;   // the transform's fixed point
-  state.edit.drag = { h, P0,
-    latOff: (h.lattice && h.lattice.off) ? h.lattice.off.slice() : [0, 0],
-    pinIdx,
-    pinScreen: (pinIdx != null && P0[pinIdx]) ? fdToS(P0[pinIdx]) : null,
-    con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null };
+  state.edit.drag = { h, P0, con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null };
   state.edit.dragInfo = null;
 }
-window.addEventListener('mousemove', e => {
-  if (!editActive() || !state.edit.drag || state.edit.drag.fromPair) return;
-  const r = $('fd').getBoundingClientRect();
-  let w = fdToW(e.clientX - r.left, e.clientY - r.top);
-  const lo = state.edit.drag.latOff;
-  if (lo && (lo[0] || lo[1])) w = [w[0] - lo[0], w[1] - lo[1]];   // the disc is nudged; the point is not
-  dragCornerTo(w);
-});
 // Move the dragged handle to w (domain coordinates), by the same routing whichever view the drag came from.
-function dragCornerTo(w) {
-  const M = state.edit.M, h = state.edit.drag.h;
-  const snapshot = M.P.map(p => p.slice());
-  /* Route by what the handle actually IS:
-       interior            -- free, no constraint;
-       slider              -- confined to its mirror line, and moving it is an AFFINE STRETCH of the
-                              whole domain, so the interior rides along instead of being left behind;
-       free boundary(blue) -- moves anywhere, its partner instance follows under the cut pairing, and
-                              the interior is repaired afterwards;
-       anything else       -- the constrained (angles + congruence + closure) solve. */
-  if (h.lattice) {
-    // Always transform the DRAG-START snapshot. Applying the map to the current (already
-    // transformed) state compounds it every frame -- that is what made this judder and collapse
-    // the domain to a line.
-    const dc0 = state.edit.dc0 || state.edit.dc;
-    const dr = DE.dragDimension(M, dc0, state.edit.drag.P0, h.lattice.kind, w);
-    /* Keep the ratio handle under the pointer WHILE dragging. An aspect stretch also moves the
-       sizer, so the axis the handle is constrained to rotates mid-drag; re-deriving the handle from
-       the moved axis is what made it trail the mouse. During the drag we place it from the FROZEN
-       drag-start frame -- for freedom 2 that is the pointer itself, for freedom 1 the pointer
-       projected onto the frozen axis (it is a one-parameter control, so it can only live on that
-       line). On mouse-up `dimensionControls` recomputes everything from scratch. */
-    if (dr && dr.ok && h.lattice.kind === 'shape' && state.edit.dc) {
-      if (state.edit.dc.shapeCorner != null) {
-        DE.refreshShapeHandle(M, state.edit.dc, false);      // rides its own corner
-      } else if (state.edit.dc.freedom === 2) {
-        state.edit.dc.shapePoint = [w[0], w[1]];
-      } else if (dc0.shapeAxis) {
-        const A0 = state.edit.drag.P0[dc0.anchorCorner], ax = dc0.shapeAxis;
-        const t = (w[0] - A0[0]) * ax[0] + (w[1] - A0[1]) * ax[1];
-        state.edit.dc.shapePoint = [A0[0] + ax[0] * t, A0[1] + ax[1] * t];
-        state.edit.dc.shapeAxis = ax;
-      }
-      state.edit.dcHeld = true;                 // do not let applyRealization re-derive it below
-    }
-    state.edit.dragInfo = dr && dr.ok
-      ? (dr.k !== undefined ? `aspect &times;${dr.k.toFixed(3)}`
-        : dr.scale !== undefined ? `scale &times;${dr.scale.toFixed(3)}` : 'shape')
-      : null;
-  } else if (h.kind === 'interior') {
-    DE.dragInterior(M, h.corner, w);                       // never touches the lattice
-  } else {
-    /* Every non-skeleton corner reshapes tiles: hold the cut-edge pairings fixed and repair the
-       interior. The DIMENSIONS are changed only through the three skeleton handles, so grabbing an
-       ordinary point can no longer move the lattice out from under you.
-       Caveat, and the HUD reports it: a corner that sits on a MIRROR edge defines that mirror line,
-       so moving it does still re-derive that generator -- "(changed)" will show for those. */
+// Move one corner of model M toward w, by the rules in force; returns '' on success or why it could not.
+// LATTICE ON (the default -- John, 2026-10-22, on #408: "I'm able to change the lattice dimensions. And even better ... they
+// can be kites"): the constrained solve (angles + congruence + closure) may re-derive the side pairings, so a corner can reshape
+// the lattice too; a corner whose angle is forced falls back to a boundary re-solve. LATTICE OFF: the pairings are held fixed
+// (dragFree), so only the tiles change. In both, a point on a mirror slides along it and a rotation centre stays put. No size
+// handles either way: zoom covers that.
+function moveCorner(M, h, w, latticeFree) {
+  const con = DE.constraintAt(state.dev, M.P[h.corner]);
+  if (con && con.kind === 'pinned') return 'this corner is fixed by a rotation';
+  const wc = DE.applyConstraint(con, M.P[h.corner], w);
+  if (h.kind === 'interior') { DE.dragInterior(M, h.corner, wc); return ''; }
+  if (latticeFree) {
     const snap = M.P.map(p => (p ? p.slice() : p));
-    // a point on a mirror slides ALONG that mirror; a point fixed by a rotation cannot move
-    const con = state.edit.drag.con;
-    const wc = DE.applyConstraint(con, snap[h.corner], w);
-    if (con && con.kind === 'pinned') { drawFd(); return; }
-    /* Move it by the least-norm motion that achieves the REACHABLE part of the request. Half of all
-       boundary handles (measured: 384 of 765) can only travel along ONE line -- asking those to
-       chase a 2-D pointer is what made the domain jitter and left the handle sitting away from the
-       cursor. John, on #442: "Some make it jitter... We could restrict its movement to be along the
-       line it's on." `dragConstrained` does exactly that, and holds the pins while it does it. */
-    const dcr = DE.dragConstrained(M, h.walkIndex, wc, {});
-    if (dcr && dcr.ok) {
-      state.edit.dragInfo = dcr.rank === 1 ? 'slides along one line' : null;
-      if (!DE.orientationCheck(M).ok) DE.untangle(M, {});
-      const vq = DE.validate(M, { cheapOnly: true });
-      if (vq.ok) {
-        const rs = applyRealization();
-        if (rs.ok) { state.edit.lastGood = M.P.map(q => q.slice()); state.edit.metrics = DE.metrics(rs.dev); }
-        else { M.P = snapshot; }
-      }
-      holdView();
-      drawFd(vq);
-      return;
-    }
-    if (dcr && !dcr.ok) { state.edit.dragInfo = 'this point cannot move'; drawFd(); return; }
+    const r = DE.dragConstrained(M, h.walkIndex, wc, {});
+    if (r && r.ok) return '';
+    if (r && !r.ok) return 'this corner cannot move';
     DE.dragFree(M, h.walkIndex, wc);
-    if (!DE.angleCheck(M).ok) {
-      /* This corner's angle is individually FORCED (its orbit has one instance), so holding the
-         pairings fixed cannot move it -- the whole boundary has to re-solve. #19 (*632) is the pure
-         case: no interior corners, a rigid lattice, and all five corners angle-forced, so the ONLY
-         freedom is in the side lengths and the constrained solve is the only thing that can reach
-         it. Without this fallback nothing on that type could change the tile size ratio. */
+    if (!DE.angleCheck(M).ok) {            // angle individually forced: only a boundary re-solve can move it (#19)
       for (let i = 0; i < snap.length; i++) if (snap[i]) M.P[i] = snap[i].slice();
       DE.dragBoundary(M, h.walkIndex, wc, { anchorIdx: h.walkIndex === 0 ? 1 : 0 });
     }
-    if (!DE.orientationCheck(M).ok) DE.untangle(M, {});
+    return '';
   }
-  const val = DE.validate(M, { cheapOnly: true });
-  if (val.ok) {
-    const res = applyRealization();
-    if (res.ok) {
-      state.edit.lastGood = M.P.map(p => p.slice());
-      state.edit.metrics = DE.metrics(res.dev);
-    } else { M.P = snapshot; }
+  DE.dragFree(M, h.walkIndex, wc);
+  return DE.angleCheck(M).ok ? '' : "this corner's angle is fixed by the symmetry";
+}
+const latticeFree = () => !$('latticeFree') || $('latticeFree').checked;
+// THE TILING DECIDES, NOT THE SCAFFOLDING (John, 2026-10-22: "Insisting that each skeleton ... of polygon is a fan from a
+// center point is an unneeded limit"). The domain's chambers may now be inverted (draw_dsym2 glues copies by handedness, not
+// by which side a chamber's centre is on), so a drag is judged by what the group needs -- equal paired sides and the angle sums
+// (groupOk) -- and by the tiling it builds (tilingOk): every tile present, every outline simple, the plane covered once.
+const groupOk = M => { const v = DE.validate(M, { cheapOnly: true }); return v.congruence.ok && v.angles.ok; };
+function tilingOk(dev) {
+  if (!dev || !dev.complete.length) return false;
+  const c = {}; for (const t of dev.complete) c[t.orbit] = (c[t.orbit] || 0) + 1;
+  if (state.edit && state.edit.counts0 && JSON.stringify(c) !== state.edit.counts0) return false;   // a tile went missing
+  const reps = new Map(); for (const t of dev.complete) if (!reps.has(t.orbit)) reps.set(t.orbit, t);
+  const crossing = (p, q, r, t) => { const d = (q[0] - p[0]) * (t[1] - r[1]) - (q[1] - p[1]) * (t[0] - r[0]); if (Math.abs(d) < 1e-14) return false;
+    const u = ((r[0] - p[0]) * (t[1] - r[1]) - (r[1] - p[1]) * (t[0] - r[0])) / d, v = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d;
+    return u > 1e-9 && u < 1 - 1e-9 && v > 1e-9 && v < 1 - 1e-9; };
+  for (const t of reps.values()) {                     // each tile's outline is simple (congruent copies share the answer)
+    const m = t.pts.length;
+    for (let i = 0; i < m; i++) for (let j = i + 2; j < m; j++) {
+      if (i === 0 && j === m - 1) continue;
+      if (crossing(t.pts[i], t.pts[(i + 1) % m], t.pts[j], t.pts[(j + 1) % m])) return false;
+    }
   }
-  holdView();
-  drawFd(val);
+  // covered exactly once: sample a window around the tile nearest the origin, off any regular grid
+  const t0 = dev.complete.reduce((b, t) => Math.hypot(...t.ctr) < Math.hypot(...b.ctr) ? t : b);
+  let r = 0; for (const t of reps.values()) for (const p of t.pts) r = Math.max(r, Math.hypot(p[0] - t.ctr[0], p[1] - t.ctr[1]));
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
+    const x = t0.ctr[0] + r * ((i + 0.37) / 4.5 - 1), y = t0.ctr[1] + r * ((j + 0.61) / 4.5 - 1);
+    let k = 0; for (const t of dev.complete) if (inPoly([x, y], t.pts)) k++;
+    if (k !== 1) return false;
+  }
+  return true;
+}
+function dragCornerTo(w) {
+  const M = state.edit.M, h = state.edit.drag.h;
+  const snapshot = M.P.map(p => (p ? p.slice() : p));
+  const undo = why => { M.P = snapshot; state.edit.dragInfo = why; };
+  const why = moveCorner(M, h, w, latticeFree());
+  if (why) return undo(why);
+  if (!groupOk(M)) return undo("can't go further that way");
+  const res = applyRealization();
+  if (!res.ok || !tilingOk(res.dev)) { undo("can't go further that way: the tiles would overlap or break"); applyRealization(); return; }
+  if (!latticeFree()) {                   // the last guard for shape-only edits
+    const L = DE.latticeBasis(res.dev), L0 = state.edit.lattice0;
+    if (L && L0 && L.area && L0.area && (Math.abs(L.area - L0.area) > 1e-6 * L0.area || Math.abs(L.a - L0.a) > 1e-6 * L0.a)) {
+      undo('moving this corner would change the lattice'); applyRealization(); return;
+    }
+  }
+  state.edit.lastGood = M.P.map(p => (p ? p.slice() : p));
+  state.edit.metrics = DE.metrics(res.dev);
+  state.edit.dragInfo = null;
 }
 /* Slide the view so the ANCHOR -- the fixed point every dimension transform is built around --
    stays on the same screen pixel for the whole gesture. Pinning the dragged handle instead would
    freeze it under the cursor; pinning the anchor cancels only the procrustes translation, which is
    the part that has no business moving. Scale is untouched, so nothing zooms mid-gesture. */
-function holdView() {
-  const d = state.edit.drag;
-  if (!d || !d.pinScreen || d.pinIdx == null) return;
-  const now = state.edit.M.P[d.pinIdx];       // the ANCHOR, not the handle being dragged
-  if (!now) return;
-  const v = state.edit.view, q = [v.ox + now[0] * v.s, v.oy - now[1] * v.s];
-  v.ox += d.pinScreen[0] - q[0];
-  v.oy += d.pinScreen[1] - q[1];
-}
 window.addEventListener('mouseup', () => {
   if (!editActive() || !state.edit.drag) return;
   state.edit.drag = null;
@@ -2291,8 +1971,7 @@ window.addEventListener('mouseup', () => {
   state.edit.dc0 = null;
   state.edit.dcHeld = false;
   const M = state.edit.M;
-  const val = DE.validate(M, { cheapOnly: true });
-  if (!val.ok) { M.P = state.edit.lastGood.map(p => p.slice()); applyRealization(); }   // revert
+  if (!groupOk(M) || !tilingOk(state.dev)) { M.P = state.edit.lastGood.map(p => p.slice()); applyRealization(); }   // revert
   /* Re-derive the controls from the SETTLED domain. Without this the ratio handle keeps whatever
      position the pointer ended at -- drag it far out and it stays far out, off the edge of the pane
      and out of reach, because fdFit only ever saw the domain's corners. John, 2026-09-04 on #356:
@@ -2305,21 +1984,28 @@ window.addEventListener('mouseup', () => {
        is whatever the user just chose, not the one they started with. */
     try { DE.setPins(M, DE.pinnedWalkPositions(M, state.dev, DE.constraintAt)); } catch (e) {}
   }
-  fdFit();                                                                             // recentre/resize
-  drawFd();
+  draw();
 });
 
 $('editToggle').addEventListener('click', () => { editActive() ? endEdit() : beginEdit(); draw(); });
-$('showFd').addEventListener('change', () => { if (editActive()) $('fdwrap').hidden = !$('showFd').checked; });
-$('modeDim').addEventListener('click', () => setEditMode('dimensions'));
-$('modeShape').addEventListener('click', () => setEditMode('shape'));
 $('editReset').addEventListener('click', () => {
   if (!editActive()) return;
   state.edit.M.P = state.edit.canonical.map(p => p.slice());
   state.edit.lastGood = state.edit.M.P.map(p => p.slice());
   const res = applyRealization();
   if (res.ok) state.edit.metrics = DE.metrics(res.dev);
-  fdFit(); drawFd();
+  draw();
+});
+$('latticeFree').addEventListener('change', () => {
+  if (!editActive()) return;
+  state.edit.lattice0 = DE.latticeBasis(state.dev);      // switching it off holds the lattice as it is NOW
+  state.edit.movable = movableCorners(); draw();
+});
+$('curveReset').addEventListener('click', () => {
+  const F = window.FIGURE_SHAPES && window.FIGURE_SHAPES[state.id];
+  state.curveEdits = F ? JSON.parse(JSON.stringify(F.curves || {})) : {};
+  state.edgeCurves = buildEdgeCurves(state.dev);
+  draw();
 });
 $('editUndo').addEventListener('click', () => {
   if (!editActive() || !state.edit.undo.length) return;
@@ -2327,9 +2013,8 @@ $('editUndo').addEventListener('click', () => {
   state.edit.lastGood = state.edit.M.P.map(p => p.slice());
   const res = applyRealization();
   if (res.ok) state.edit.metrics = DE.metrics(res.dev);
-  fdFit(); drawFd();
+  draw();
 });
-$('editRecenter').addEventListener('click', () => { if (editActive()) { fdFit(); drawFd(); fit(); draw(); } });
 
 window.addEventListener('resize', resize);
 const startId = location.hash.replace('#', '').trim();   // read before fillTypes() rewrites it

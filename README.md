@@ -27,4 +27,4 @@ Each one is re-checked before it is added.
 
 ## License
 
-Code: [MIT](LICENSE). Proof pictures, data and write-ups: [CC BY 4.0](LICENSE-CONTENT.md).
+Code: [GNU GPL version 3](LICENSE) -- the drawing engine follows Tegula (Huson, Zeller, Westphal; GPL-3), see [NOTICE.md](NOTICE.md). Proof pictures, data and write-ups: [CC BY 4.0](LICENSE-CONTENT.md).

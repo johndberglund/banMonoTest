@@ -7,4 +7,4 @@ explanations in this repository are licensed under the
 You may share and adapt them for any purpose, provided you give appropriate credit
 ("John Berglund, banMonoTest"), link to the license, and indicate if changes were made.
 
-The code (`*.html`, `js/`) is licensed separately under the MIT License; see `LICENSE`.
+The code (`*.html`, `js/`) is licensed separately under the GNU GPL version 3; see `LICENSE` and `NOTICE.md`.

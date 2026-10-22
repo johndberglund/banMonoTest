@@ -46,6 +46,29 @@ function develop(sym, opts) {
   if (!R) throw new Error('no disk realization');
   const { D, I, K, C } = R;
   const { P, E, N } = C;
+  // CHAMBER COLOURING. Chambers either side of an interior edge are mirror images, so the flags 2-colour (+1/-1), and the
+  // isometry gluing the next copy across a cut edge must have the handedness that puts the two chambers in opposite colours:
+  // det = -col[f] * col[g] for the generator, -det(T) * col[f] * col[g] when crossing from a chamber placed by T. Choosing by
+  // that instead of by which side of the edge a chamber's centre N lies on means the domain may contain INVERTED chambers
+  // (John, 2026-10-22: "Maybe we can allow the skeleton to have retroflex triangles that go the opposite direction?") -- a
+  // tile that isn't a fan from its centre, #420 with the blue tile rotated. The side test stays only as a fallback.
+  const col = (() => {
+    const c = new Int8Array(D.size + 1);
+    for (let f0 = 1; f0 <= D.size; f0++) {
+      if (c[f0]) continue;
+      c[f0] = 1; const st = [f0];
+      while (st.length) {
+        const f = st.pop();
+        for (let t = 0; t < 3; t++) {
+          if (K.isB[I.nodes[f - 1].ep[t]]) continue;
+          const g = D.sigma[t][f];
+          if (!c[g]) { c[g] = -c[f]; st.push(g); } else if (c[g] !== -c[f]) return null;
+        }
+      }
+    }
+    return c;
+  })();
+  const detSign = T => Math.sign(T[0] * T[4] - T[1] * T[3]);
 
   const gens = [];
   // mirror sides -> reflections
@@ -66,12 +89,16 @@ function develop(sym, opts) {
     const p1 = P[K.cornOf(f, a)], p2 = P[K.cornOf(f, b)];
     const q1 = P[K.cornOf(g, a)], q2 = P[K.cornOf(g, b)];
     const cands = isometryPair(p1, p2, q1, q2);
-    // keep the one putting the image of chamber f opposite chamber g across the shared side
-    const want = -Math.sign(side(q1, q2, N[g - 1]));
+    // keep the one putting the image of chamber f opposite chamber g across the shared side: by handedness from the colouring
+    // (sound with inverted chambers), else by the side of the shared edge chamber f's centre lands on
     let best = null;
-    for (const T of cands) {
-      const s = Math.sign(side(q1, q2, apply(T, N[f - 1])));
-      if (s === want) { best = T; break; }
+    if (col) best = cands.find(T => detSign(T) === -col[f] * col[g]) || null;
+    if (!best) {
+      const want = -Math.sign(side(q1, q2, N[g - 1]));
+      for (const T of cands) {
+        const s = Math.sign(side(q1, q2, apply(T, N[f - 1])));
+        if (s === want) { best = T; break; }
+      }
     }
     if (!best) best = cands[0];
     gens.push(best, invert(best));
@@ -161,10 +188,13 @@ function develop(sym, opts) {
     const g = D.sigma[ty][f];
     const q1 = P[K.cornOf(g, a)], q2 = P[K.cornOf(g, b)];
     const cands = isometryPair(q1, q2, p1, p2);           // isometries taking g's own corners onto here
-    const want = -Math.sign(side(p1, p2, apply(T, N[f - 1])));
     let best = null;
-    for (const cand of cands) {
-      if (Math.sign(side(p1, p2, apply(cand, N[g - 1]))) === want) { best = cand; break; }
+    if (col) best = cands.find(c2 => detSign(c2) === -detSign(T) * col[f] * col[g]) || null;   // by handedness, as above
+    if (!best) {
+      const want = -Math.sign(side(p1, p2, apply(T, N[f - 1])));
+      for (const cand of cands) {
+        if (Math.sign(side(p1, p2, apply(cand, N[g - 1]))) === want) { best = cand; break; }
+      }
     }
     return { T: best || cands[0], f: g };
   }

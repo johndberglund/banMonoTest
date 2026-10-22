@@ -52,7 +52,7 @@
     const orbitIndex = new Map();
     [...orbitRep.keys()].filter(o => orbitType.get(o) !== 'I').sort((a, b) => a - b)
       .forEach((o, i) => orbitIndex.set(o, i));
-    const canonCache = new Map(), heights = new Map();   // orbit -> motif height in world units
+    const canonCache = new Map(), heights = new Map(), editor = new Map();   // orbit -> motif height (world), editor points
     const canonOf = o => { if (!canonCache.has(o)) {
         const ty = orbitType.get(o), ch = choice && choice.get(o);
         // ch.pts: the curve as EDITOR points (a J's whole curve, a U's or S's half up to the fold) -- a hand-edited curve
@@ -64,6 +64,9 @@
         const [R0, R1] = orbitRep.get(o), g = (grow ? grow(Math.hypot(R1[0] - R0[0], R1[1] - R0[1])) : 1) * (ch && ch.k != null ? ch.k : 1);
         if (g !== 1) c = enlarge(c, g);
         heights.set(o, Math.max(...c.map(p => Math.abs(p[1]))) * Math.hypot(R1[0] - R0[0], R1[1] - R0[1]));
+        // the finished curve as EDITOR points (a J's whole curve; a U's or S's half up to the fold -- every transform above keeps
+        // their symmetry, so the first half is the editable half), so the builder can open a type looking like its figure
+        editor.set(o, ty === 'J' || ty === 'I' ? c.map(p => p.slice()) : c.slice(0, (c.length + 1) / 2).map(p => p.slice()));
         canonCache.set(o, c);
       }
       return canonCache.get(o); };
@@ -99,7 +102,7 @@
       }
     }
     for (const o of orbitIndex.keys()) canonOf(o);      // every orbit's height, even one with no edge in view
-    return { edges, orbitIndex, orbitType, heights };
+    return { edges, orbitIndex, orbitType, heights, editor };
   }
 
   // How close a tile's edge curves come to one another, in world units: the least distance between points of two DIFFERENT
@@ -392,7 +395,9 @@
       + `<path fill="${col.A}" d="${paths.A.join('')}"/><path fill="${col.B}" d="${paths.B.join('')}"/></g>`;
     if (opts.label) out += `<text x="${W / 2}" y="18" text-anchor="middle" font-family="system-ui,Segoe UI,sans-serif" `
       + `font-size="13" fill="${col.text}">${esc(opts.label)}</text>`;
-    return { svg: out + `</svg>`, partial: !!partial, clearPx };
+    const curves = {};
+    for (const [o, pts] of ec.editor) if (ec.orbitType.get(o) !== 'I') curves[o] = pts.map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]);
+    return { svg: out + `</svg>`, partial: !!partial, clearPx, curves };
   }
   function svg(row, opts) { const f = figure(row, opts); return f ? f.svg : null; }
 
