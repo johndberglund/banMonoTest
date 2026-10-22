@@ -293,7 +293,7 @@ function useFigureShape(id) {
     const R = state.dev.R, M = DE.buildEditModel(R.D, R.I, R.K, R.C);
     if (M.P.length !== F.P.length || (F.fp && F.fp !== M.fingerprint.hash)) return;
     M.P = F.P.map(p => (p ? p.slice() : p));
-    const dev = DD.develop(TY[id].sym, { maxCopies: 160, realization: { D: M.D, I: M.I, K: M.K, C: DE.toC(M) } });
+    const dev = developFit(id, { D: M.D, I: M.I, K: M.K, C: DE.toC(M) });
     if (dev && dev.complete.length) { state.dev = dev; state.shape = { P: M.P.map(p => (p ? p.slice() : p)), fingerprint: { hash: M.fingerprint.hash } }; }
   } catch (e) { /* keep the default shape */ }
 }
@@ -305,7 +305,7 @@ function load(id) {
   $('typeLinks').innerHTML = TY[id] && TY[id].v === 'impossible'
     ? `Proven impossible. <a href="proofs.html#${id}">See the published proof →</a>` : '';
   if (state.edit) endEdit();          // the edit model belongs to the OLD type's disk indexing
-  try { state.dev = DD.develop(TY[id].sym, { maxCopies: 160 }); }
+  try { state.dev = developFit(id, null); }
   catch (e) { state.dev = null; }
   useFigureShape(id);
   state.edgeCurves = buildEdgeCurves(state.dev);
@@ -700,7 +700,8 @@ function drawPair() {
   $('pairHint').textContent = (mode === 'one'
     ? `One tile from each class. In the tiling they occur ${ratio}.`
     : `${nA + nB} tiles in their true proportion: ${ratio}.`)
-    + (state.edit && state.edit.dragInfo ? ` — ${state.edit.dragInfo}.` : '');
+    + (state.edit && state.edit.dragInfo ? ` — ${state.edit.dragInfo}.` : '')
+    + (state.edit && ratioPoint() && !(state.edit.dragInfo) ? ' The white-ringed dot changes the lattice ratio.' : '');
   const curvesOn = state.edgeCurves && $('curveToggle').checked;
   const curveMap = curvesOn ? curveEdgeMap(state.edgeCurves) : new Map();
   const bounds = tiles.map(t => curvesOn ? tileBoundaryWorldPts(t.pts, curveMap) : t.pts);
@@ -736,8 +737,25 @@ function drawPair() {
       state.pair.dots.push({ q, tid: t.tid, i, corner: c });
       const on = state.edit.drag && state.edit.drag.fromPair && state.edit.drag.fromPair.corner === c;
       g.beginPath(); g.arc(q[0], q[1], on ? 7 : 5.5, 0, 7);
-      g.fillStyle = '#f39c3d'; g.fill(); g.strokeStyle = '#0d0f14'; g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = '#f39c3d'; g.fill(); g.strokeStyle = isRatioCorner(c) ? '#ffffff' : '#0d0f14'; g.lineWidth = isRatioCorner(c) ? 2.5 : 1.5; g.stroke();
     }));
+    // THE LATTICE-RATIO DOT. Where the corner that carries the ratio is not a tile corner (an edge midpoint or a tile centre -- about
+    // half of the types whose lattice can stretch), draw its dot at the copy of that point nearest the tiles shown. The copy is
+    // fixed by its index in dev.copies, which names the same group element in every realization, so the dot follows its corner
+    // while the lattice changes. Ringed white, like the tile-corner ratio dot.
+    const dcr = state.edit.dc, rc = dcr ? dcr.shapeCorner : null, Pc = ratioPoint();
+    if (Pc && !(rc != null && state.pair.dots.some(d0 => d0.corner === rc)) && state.dev && state.dev.copies) {
+      {
+        const gx = tiles.reduce((a, t) => a + t.ctr[0], 0) / tiles.length, gy = tiles.reduce((a, t) => a + t.ctr[1], 0) / tiles.length;
+        const fixed = state.edit.drag && state.edit.drag.fromPair && state.edit.drag.fromPair.synth ? state.edit.drag.fromPair.h : null;
+        let bi = fixed, bd = Infinity;
+        if (bi == null) state.dev.copies.slice(0, 400).forEach((T, hi) => { const w = DD.apply(T, Pc), dd = Math.hypot(w[0] - gx, w[1] - gy); if (dd < bd) { bd = dd; bi = hi; } });
+        const w = DD.apply(state.dev.copies[bi], Pc), q = [ox + s * w[0], oy - s * w[1]];
+        state.pair.dots.push({ q, corner: rc, synth: true, h: bi });
+        g.beginPath(); g.arc(q[0], q[1], 5.5, 0, 7);
+        g.fillStyle = '#f39c3d'; g.fill(); g.strokeStyle = '#ffffff'; g.lineWidth = 2.5; g.stroke();
+      }
+    }
     // CURVES, edited the way program8's Explore edits a monohedral tile's (John, 2026-10-22: "Can we also make the curves
     // editable there?" ... "this is very similar to what is in program8 ... just for two orbits"): hover an edge and its whole
     // group lights up; drag any handle on any copy to move that point; drag the curve itself to add one; right-click a handle
@@ -848,11 +866,13 @@ $('pair').addEventListener('pointerdown', ev => {
     }
   }
   if (!best) return;
-  const h = state.edit.handles.find(hh => hh.corner === best.corner && handleLive(hh));
+  const h = best.corner != null ? state.edit.handles.find(hh => hh.corner === best.corner && handleLive(hh)) : { ratio: true, corner: null, kind: 'ratio' };
   if (!h) return;
   ev.preventDefault(); try { $('pair').setPointerCapture(ev.pointerId); } catch (e) { /* synthetic pointer */ }
   startCornerDrag(h);
-  state.edit.drag.fromPair = { tid: best.tid, i: best.i, corner: best.corner };
+  state.edit.drag.fromPair = best.synth
+    ? { synth: true, h: best.h, corner: best.corner, T0: state.dev.copies[best.h].slice() }   // T0: maps panel to domain, frozen
+    : { tid: best.tid, i: best.i, corner: best.corner, T0: (state.dev.complete.find(tt => tt.tid === best.tid).vaddr[best.i].T).slice() };
   draw();
 });
 $('pair').addEventListener('pointermove', ev => {
@@ -874,9 +894,10 @@ $('pair').addEventListener('pointermove', ev => {
     if (o !== state.pair.hoverOrbit) { state.pair.hoverOrbit = o; drawPair(); }
   }
   if (!editActive() || !state.edit.drag || !state.edit.drag.fromPair) return;
-  const fp = state.edit.drag.fromPair, t = state.dev.complete.find(tt => tt.tid === fp.tid);
-  if (!t || !t.vaddr[fp.i]) return;
-  dragCornerTo(DD.apply(invAffine(t.vaddr[fp.i].T), pairToWorld(ev)));
+  // The panel-to-domain map is frozen at the START of the drag (fp.T0), for every dot: when the drag changes the lattice, the
+  // current copy's isometry changes underneath the pointer and the drag runs away.
+  const fp = state.edit.drag.fromPair;
+  dragCornerTo(DD.apply(invAffine(fp.T0), pairToWorld(ev)));
 });
 $('pair').addEventListener('contextmenu', ev => ev.preventDefault());
 $('pair').addEventListener('pointerup', () => {
@@ -1775,7 +1796,7 @@ function beginEdit() {
     undo: [],
   };
   state.edit.lattice0 = DE.latticeBasis(state.dev);
-  { const c = {}; for (const t of state.dev.complete) c[t.orbit] = (c[t.orbit] || 0) + 1; state.edit.counts0 = JSON.stringify(c); }
+  state.edit.classes0 = JSON.stringify([...new Set(state.dev.complete.map(t => t.orbit))].sort((a, b) => a - b));
   state.edit.lc = DE.latticeControls(M, state.dev, TY[state.id] && TY[state.id].orb);
   state.edit.dc = DE.dimensionControls(M, state.dev, TY[state.id] && TY[state.id].orb);
   state.edit.metrics = DE.metrics(state.dev);
@@ -1808,7 +1829,7 @@ function endEdit() {
 function applyRealization() {
   const M = state.edit.M;
   let dev;
-  try { dev = DD.develop(TY[state.id].sym, { maxCopies: 160, realization: { D: M.D, I: M.I, K: M.K, C: DE.toC(M) } }); }
+  try { dev = developFit(state.id, { D: M.D, I: M.I, K: M.K, C: DE.toC(M) }); }
   catch (e) { return { ok: false, reason: e.message }; }
   if (!dev || !dev.complete.length) return { ok: false, reason: 'no tiles' };
   state.dev = dev;
@@ -1880,7 +1901,8 @@ function startCornerDrag(h) {
   state.edit.undo.push(state.edit.M.P.map(p => (p ? p.slice() : p)));
   if (state.edit.undo.length > 50) state.edit.undo.shift();
   const P0 = state.edit.M.P.map(p => (p ? p.slice() : p));
-  state.edit.drag = { h, P0, con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null };
+  state.edit.drag = { h, P0, con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null,
+                      dc0: state.edit.dc ? Object.assign({}, state.edit.dc) : null };
   state.edit.dragInfo = null;
 }
 // Move the dragged handle to w (domain coordinates), by the same routing whichever view the drag came from.
@@ -1918,8 +1940,9 @@ const latticeFree = () => !$('latticeFree') || $('latticeFree').checked;
 const groupOk = M => { const v = DE.validate(M, { cheapOnly: true }); return v.congruence.ok && v.angles.ok; };
 function tilingOk(dev) {
   if (!dev || !dev.complete.length) return false;
-  const c = {}; for (const t of dev.complete) c[t.orbit] = (c[t.orbit] || 0) + 1;
-  if (state.edit && state.edit.counts0 && JSON.stringify(c) !== state.edit.counts0) return false;   // a tile went missing
+  // every tile CLASS still present (counts differ legitimately with the patch size; partial losses show as holes in coveredOnce)
+  const classes = JSON.stringify([...new Set(dev.complete.map(t => t.orbit))].sort((a, b) => a - b));
+  if (state.edit && state.edit.classes0 && classes !== state.edit.classes0) return false;
   const reps = new Map(); for (const t of dev.complete) if (!reps.has(t.orbit)) reps.set(t.orbit, t);
   const crossing = (p, q, r, t) => { const d = (q[0] - p[0]) * (t[1] - r[1]) - (q[1] - p[1]) * (t[0] - r[0]); if (Math.abs(d) < 1e-14) return false;
     const u = ((r[0] - p[0]) * (t[1] - r[1]) - (r[1] - p[1]) * (t[0] - r[0])) / d, v = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d;
@@ -1931,7 +1954,12 @@ function tilingOk(dev) {
       if (crossing(t.pts[i], t.pts[(i + 1) % m], t.pts[j], t.pts[(j + 1) % m])) return false;
     }
   }
-  // covered exactly once: sample a window around the tile nearest the origin, off any regular grid
+  return coveredOnce(dev);
+}
+// covered exactly once: sample a window around the tile nearest the origin, off any regular grid
+function coveredOnce(dev) {
+  if (!dev || !dev.complete.length) return false;
+  const reps = new Map(); for (const t of dev.complete) if (!reps.has(t.orbit)) reps.set(t.orbit, t);
   const t0 = dev.complete.reduce((b, t) => Math.hypot(...t.ctr) < Math.hypot(...b.ctr) ? t : b);
   let r = 0; for (const t of reps.values()) for (const p of t.pts) r = Math.max(r, Math.hypot(p[0] - t.ctr[0], p[1] - t.ctr[1]));
   for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
@@ -1941,10 +1969,45 @@ function tilingOk(dev) {
   }
   return true;
 }
+// Develop enough copies of the domain to cover the tiles around the origin. 160 is enough for most types; where the tiles are big
+// against a small lattice cell (#72948, #72959) it leaves holes, so deepen until the window is covered -- the figure generator
+// does the same. Returns the deepest attempt if none covers.
+function developFit(id, realization) {
+  let dev = null;
+  for (const maxCopies of [160, 400, 1000, 2400, 6000]) {
+    dev = DD.develop(TY[id].sym, realization ? { maxCopies, realization } : { maxCopies });
+    if (!dev.complete.length || coveredOnce(dev)) break;
+  }
+  return dev;
+}
+// The corner that carries the lattice ratio (dimensionControls' shape corner): its drag is the lattice-ratio drag, which stretches
+// the whole domain along the free axis (setAspect, or setLatticeVector when the lattice is oblique). The generic constrained
+// solve cannot do it, because it holds the rotation centres in place and a ratio change moves them relative to each other
+// (John, 2026-10-22, on #224: "I want to be able to change the lattice ratio. None of the orange dots seem to change it.").
+const isRatioCorner = c => !!(c != null && latticeFree() && state.edit && state.edit.dc && state.edit.dc.freedom >= 1 && state.edit.dc.shapeCorner === c);
+// The ratio handle's place in the DOMAIN: a domain corner when the lattice controls tie it to one, else the free point on the
+// lattice skeleton that dimensionControls gives (an oblique lattice, or any lattice after a few drags, has no corner to ride).
+function ratioPoint() {
+  const dc = state.edit && state.edit.dc;
+  if (!latticeFree() || !dc || !(dc.freedom >= 1)) return null;
+  if (dc.shapeCorner != null) return state.edit.M.P[dc.shapeCorner] || null;
+  return dc.shapePoint || null;
+}
 function dragCornerTo(w) {
   const M = state.edit.M, h = state.edit.drag.h;
   const snapshot = M.P.map(p => (p ? p.slice() : p));
   const undo = why => { M.P = snapshot; state.edit.dragInfo = why; };
+  if ((h.ratio || isRatioCorner(h.corner)) && state.edit.drag.dc0) {
+    const dr = DE.dragDimension(M, state.edit.drag.dc0, state.edit.drag.P0, 'shape', w);
+    if (!dr || !dr.ok) return undo(dr && dr.reason ? 'lattice ratio: ' + dr.reason : "can't change the lattice here");
+    if (!groupOk(M)) return undo("can't go further that way");
+    const res = applyRealization();
+    if (!res.ok || !tilingOk(res.dev)) { undo("can't go further that way: the tiles would overlap or break"); applyRealization(); return; }
+    state.edit.lastGood = M.P.map(p => (p ? p.slice() : p));
+    state.edit.metrics = DE.metrics(res.dev);
+    state.edit.dragInfo = dr.k !== undefined ? `lattice ratio \u00d7${dr.k.toFixed(2)}` : 'lattice ratio';
+    return;
+  }
   const why = moveCorner(M, h, w, latticeFree());
   if (why) return undo(why);
   if (!groupOk(M)) return undo("can't go further that way");

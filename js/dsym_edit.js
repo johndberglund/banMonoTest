@@ -1251,7 +1251,8 @@
       for (const k of [1.4, 0.7]) {
         const test = cloneModel(M);
         setAspect(test, [0, 0], dir, k);
-        if (!angleCheck(test, tol).ok || !orientationCheck(test).ok) { ok = false; break; }
+        // (paired sides must stay equal too -- a glide's axis is the only diagonal that does; #209389, 2026-10-22)
+        if (!angleCheck(test, tol).ok || !orientationCheck(test).ok || !congruenceCheck(test, 1e-7).ok) { ok = false; break; }
       }
       if (ok) return dir;
     }
@@ -1358,7 +1359,7 @@
         for (const k of [1.4, 0.7]) {
           const test = cloneModel(M);
           setAspect(test, A0, w, k);
-          if (!angleCheck(test, 1e-7).ok || !orientationCheck(test).ok) return false;
+          if (!angleCheck(test, 1e-7).ok || !orientationCheck(test).ok || !congruenceCheck(test, 1e-7).ok) return false;
         }
         return true;
       };
@@ -1370,7 +1371,8 @@
         const u = [S0[0] - A0[0], S0[1] - A0[1]], w = [Y0[0] - A0[0], Y0[1] - A0[1]];
         const uL = Math.hypot(u[0], u[1]), wL = Math.hypot(w[0], w[1]);
         if (uL < 1e-9 || wL < 1e-9) continue;
-        if (Math.abs((u[0] * w[0] + u[1] * w[1]) / (uL * wL)) > 0.02) continue;   // want a right angle
+        if (Math.abs((u[0] * w[0] + u[1] * w[1]) / (uL * wL)) > (freedom === 1 ? 1e-7 : 0.02)) continue;   // want a right angle
+        // (exact when the stretch is along ONE axis: a nearly-perpendicular direction is not a symmetry axis)
         if (!stretchLegal(A0, [w[0] / wL, w[1] / wL])) continue;
         const score = (con(a).kind === 'pinned' ? 60 : 0) + (con(b).kind === 'pinned' ? 40 : 0)
                     + tyS(a) + tyS(b) + tyS(y) + uL + wL;
@@ -1396,7 +1398,7 @@
         for (const k of [1.4, 0.7]) {
           const test = cloneModel(M);
           setAspect(test, A0, perp, k);
-          if (!angleCheck(test, 1e-7).ok || !orientationCheck(test).ok) return false;
+          if (!angleCheck(test, 1e-7).ok || !orientationCheck(test).ok || !congruenceCheck(test, 1e-7).ok) return false;
         }
         return true;
       };

@@ -374,7 +374,14 @@
     // 184px-wide review sheet (John, 2026-10-22: "#1106 to 1110 still have very small edge patterns")
     const MIN_PX = opts.motifPx || 12;
     const grow = len => Math.min(3.5, Math.max(1, MIN_PX / (0.107 * len * s)));
-    const pick = opts.noFlip ? { ec: buildEdgeCurves(dev, grow) } : chooseFlips(dev, grow, s, MIN_PX);
+    // opts.curves: HAND-TUNED curves, as the builder saves them (orbit -> editor points). Used exactly as given -- no automatic
+    // motif choice, flip, slide or enlargement -- so a figure the author has tuned stays as tuned (figure_overrides/<id>.json).
+    let pick;
+    if (opts.curves) {
+      const hand = new Map();
+      for (const [o, pts] of Object.entries(opts.curves)) hand.set(+o, { pts });
+      pick = { ec: buildEdgeCurves(dev, null, hand) };
+    } else pick = opts.noFlip ? { ec: buildEdgeCurves(dev, grow) } : chooseFlips(dev, grow, s, MIN_PX);
     const ec = pick.ec, cmap = curveEdgeMap(ec);
     const clearPx = (pick.clearance != null ? pick.clearance : clearance(dev, cmap)) * s;
     const orbits = [...new Set(dev.complete.map(t => t.orbit))].sort((a, b) => a - b);
