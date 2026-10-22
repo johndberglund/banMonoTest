@@ -87,10 +87,10 @@ function develop(sym, opts) {
     }
 
   const chambers = [];
-  for (const T of copies) for (let f = 1; f <= D.size; f++)
+  copies.forEach((T, h) => { for (let f = 1; f <= D.size; f++)
     chambers.push({ vert: apply(T, P[K.cornOf(f, 0)]), emid: apply(T, P[K.cornOf(f, 1)]),
                     ctr: apply(T, P[K.cornOf(f, 2)]),
-                    tileOrbit: I.nodes[f - 1].op[2], emidOrbit: I.nodes[f - 1].op[1], f, T });
+                    tileOrbit: I.nodes[f - 1].op[2], emidOrbit: I.nodes[f - 1].op[1], f, T, h }); });
 
   // Snap targets for the interactive proof tool: every barycentric point, deduped by position and
   // labelled by kind. John's containment arguments need all three -- "tile centers, edge midpoints
@@ -172,7 +172,10 @@ function develop(sym, opts) {
   for (const b of buckets.values()) {
     const start = b.chs[0];
     let T = start.T, f = start.f;
-    const pts = [start.vert], edgeOrbits = [];
+    // vaddr: for each vertex, the isometry and domain corner it is the image of (vertex = T(P[corner])), so an editor can turn
+    // a drag on any drawn tile corner into a drag of the domain corner behind it. tid: the tile's combinatorial identity (its
+    // first chamber's copy and flag) -- the same tile in every realization of the type, so a view can follow it while reshaping.
+    const pts = [start.vert], edgeOrbits = [], vaddr = [{ T: start.T, corner: K.cornOf(start.f, 0) }];
     let closed = false, guard = b.chs.length + 2;
     while (guard-- > 0) {
       if (K.isB[I.nodes[f - 1].ep[1]]) { const r = crossBoundary(T, f, 1); T = r.T; f = r.f; }
@@ -181,13 +184,13 @@ function develop(sym, opts) {
       if (K.isB[I.nodes[f - 1].ep[0]]) { const r = crossBoundary(T, f, 0); T = r.T; f = r.f; }
       else f = D.sigma[0][f];
       const v = apply(T, P[K.cornOf(f, 0)]);
-      pts.push(v);
+      pts.push(v); vaddr.push({ T, corner: K.cornOf(f, 0) });
       if (f === start.f && Math.hypot(v[0] - start.vert[0], v[1] - start.vert[1]) < 1e-6) {
-        pts.pop(); closed = true; break;
+        pts.pop(); vaddr.pop(); closed = true; break;
       }
     }
     if (closed && pts.length >= 3 && pts.length * 2 === b.chs.length)
-      tiles.push({ ctr: b.ctr, orbit: b.orbit, pts, edgeOrbits, nch: b.chs.length });
+      tiles.push({ ctr: b.ctr, orbit: b.orbit, pts, edgeOrbits, nch: b.chs.length, vaddr, tid: start.h + ':' + start.f });
   }
   const want = new Map();
   for (let f = 1; f <= D.size; f++) { const o = I.nodes[f - 1].op[2]; want.set(o, 2 * K.ord[o].m); }

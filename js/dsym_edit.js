@@ -144,6 +144,20 @@
       genDet: generatorOrientations(D, I, K),
       fingerprint: diskFingerprint(D, I, K),
     };
+    // FLAT CHAMBERS. Some domains have a chamber of zero area (its three corners on one line) -- 61 types, all with glides or only
+    // translations (1**, 1*x, 22x, 1xx, o1), e.g. #408, #1110. draw_dsym2 decides which side of a cut edge a chamber lies on from
+    // its centre N, and the canonical (relaxed) N sits just off that line, on the right side; the plain average toC() used to
+    // compute sits exactly on it, the side test fails, and tiles go missing (found 2026-10-22 from John's #1110 edit, which had
+    // holes). So remember, for each chamber, which side of its longest side the canonical N is on, and keep it there.
+    M.nSide = [];
+    for (let f = 1; f <= D.size; f++) {
+      const cs = [0, 1, 2].map(t => C.P[K.cornOf(f, t)]);
+      let bi = 0, bl = -1;
+      for (let t = 0; t < 3; t++) { const a = cs[t], b = cs[(t + 1) % 3], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l > bl) { bl = l; bi = t; } }
+      const a = cs[bi], b = cs[(bi + 1) % 3], n = C.N && C.N[f - 1];
+      const side = n ? Math.sign((b[0] - a[0]) * (n[1] - a[1]) - (b[1] - a[1]) * (n[0] - a[0])) : 0;
+      M.nSide.push({ t: bi, side });
+    }
     M.walkOfCorner = new Int32Array(K.nCorners).fill(-1);
     K.walk.forEach((w, j) => { M.walkOfCorner[w.corner] = j; });
     return M;
@@ -230,6 +244,18 @@
         const e = E[K.sideOf(f, t)]; x += e[0]; y += e[1];
       }
       N[f - 1] = [x / 6, y / 6];
+      // a flat chamber: nudge N off its line, to the side the canonical N was on (see buildEditModel)
+      const ns = M.nSide && M.nSide[f - 1];
+      if (ns && ns.side) {
+        const cs = [0, 1, 2].map(t => P[K.cornOf(f, t)]);
+        const a = cs[ns.t], b = cs[(ns.t + 1) % 3], c = cs[(ns.t + 2) % 3];
+        const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const area2 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        if (L > 0 && Math.abs(area2) < 1e-9 * L * L) {
+          const nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L, eps = 1e-4 * L;
+          N[f - 1] = [N[f - 1][0] + ns.side * eps * nx, N[f - 1][1] + ns.side * eps * ny];
+        }
+      }
     }
     return { P: P.map(p => p.slice()), E, N, corners: M.corners };
   }

@@ -15,7 +15,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 #stage{flex:1;position:relative;min-width:0}
 canvas{display:block;width:100%;height:100%;cursor:crosshair}
 a{color:var(--pick)}
-#pair{height:220px;cursor:default;background:#0d0f14;border:1px solid var(--line);border-radius:3px}
+#pair{height:220px;cursor:default;touch-action:none;background:#0d0f14;border:1px solid var(--line);border-radius:3px}
 #pairOne.on,#pairUnit.on{border-color:var(--pick);background:#1b2b28}
 #panel{width:390px;flex:none;background:var(--panel);border-left:1px solid var(--line);
   overflow-y:auto;padding:16px 16px 40px}
@@ -148,6 +148,12 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
     <p class="hint" id="modeHint">Dimensions: the skeleton — moving these re-derives the side
     pairings, so the lattice changes. Tile shape: the pairings are held fixed, so the lattice
     cannot change and only the tiles are reshaped.</p>
+    <p class="hint">In <b>The two tiles</b> panel above: drag an orange dot to move a corner. Move over an edge to light up its
+    group; drag a handle to move that point, drag the curve itself to add one, right-click a handle to remove it. Every matching
+    edge follows. Blue handles are on the derived half of a U or S curve; grey ones are pinned by the edge type.</p>
+    <label style="display:flex;align-items:center;gap:7px;margin:4px 0;cursor:pointer">
+      <input type="checkbox" id="showFd" style="width:auto;padding:0"><span>Show the fundamental domain (lattice and size handles)</span>
+    </label>
     <button id="editReset">Reset to canonical</button>
     <button id="editUndo">Undo drag</button>
     <button id="editRecenter">Recentre / resize</button>
@@ -185,12 +191,12 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
   <div id="verdict"></div>
 
   <h2>3 · Save</h2>
-  <button id="saveRec" class="go">Save proof record (file)</button>
+  <button id="saveRec" class="go">Save tiling and proof (file)</button>
   <button id="export">Copy proof record (JSON)</button>
-  <button id="loadRec">Load a proof record…</button>
+  <button id="loadRec">Load a saved file…</button>
   <input type="file" id="loadFile" accept=".json,application/json,text/plain" hidden>
-  <p class="hint">A proof record holds your configurations, regions and last test, and can be
-  loaded back in later. To send one in, use the
+  <p class="hint">The file holds the tiling as you shaped it (corners and curves) and any
+  configurations, regions and last test -- save it even with nothing marked, and load it back later. To send one in, use the
   <a href="https://github.com/johndberglund/banMonoTest/issues/new?template=new-proof.yml" target="_blank" rel="noopener">proof form</a>.</p>
   <button id="savePic">Save picture (PNG)</button>
   <button id="saveSvg">Save picture (SVG)</button>
@@ -204,6 +210,7 @@ pre{background:#0e1015;border:1px solid var(--line);border-radius:3px;padding:9p
 <script src="js/dsym_types.js"></script>
 <script src="js/tiler_curves.js"></script>
 <script src="js/dsym_edit.js"></script>
+<script src="js/tiling_figure.js"></script>
 <script>
 'use strict';
 const TY = window.DSYM_TYPES, DD = window.DrawDsym, DF = window.DsymDeform,
@@ -284,82 +291,19 @@ function classifyEdgeType(dev, P0, P1) {
 // tilerTest.js / edge_quiz.html use for edges elsewhere in this codebase. Each physical edge is
 // drawn once (dedup by its endpoints), not once per adjacent tile. I orbits draw nothing (the
 // straight tile boundary already shows them correctly), matching tilerTest.js's convention.
+// The curves come from the shared module (js/tiling_figure.js), the same construction the figures use; state.curveEdits holds
+// hand-edited curves per edge orbit (editor points, see TilerCurves.buildCanon), which override the stock motif.
 function buildEdgeCurves(d) {
-  if (!TC || !d) return null;
-  const orbitRep = new Map();       // orbit -> one representative instance [P0, P1]
-  for (const t of d.complete) if (t.edgeOrbits) {
-    const m = t.pts.length;
-    for (let i = 0; i < m; i++) {
-      const o = t.edgeOrbits[i];
-      if (o != null && !orbitRep.has(o)) orbitRep.set(o, [t.pts[i], t.pts[(i + 1) % m]]);
-    }
-  }
-  if (!orbitRep.size) return null;
-  const orbitType = new Map();
-  for (const [o, [P0, P1]] of orbitRep) orbitType.set(o, classifyEdgeType(d, P0, P1));
-  // Motif variant: only non-I orbits consume a demo-motif slot, numbered in stable rep order --
-  // exactly assignCurveVariants in tilerTest.js -- so different orbits get visibly different marks.
-  const orbitIndex = new Map();
-  [...orbitRep.keys()].filter(o => orbitType.get(o) !== 'I').sort((a, b) => a - b)
-    .forEach((o, i) => orbitIndex.set(o, i));
-  const canonCache = new Map();
-  const canonOf = o => { if (!canonCache.has(o))
-      canonCache.set(o, TC.testCurve(orbitType.get(o), orbitIndex.get(o) || 0));
-    return canonCache.get(o); };
-  const kp = p => Math.round(p[0] / 1e-6) + ',' + Math.round(p[1] / 1e-6);
-  const ek = (a, b) => { const A = kp(a), B = kp(b); return A < B ? A + '|' + B : B + '|' + A; };
-
-  // Which MIRROR of the canonical curve each physical instance gets, so a J motif's
-  // handedness, a U fold's bulge side, and an S fold's chirality are all placed by the ACTUAL
-  // symmetry group rather than by whichever tile the edge-orbit search happened to visit first
-  // (which is what made #70's U edges face inconsistently). For the orbit's representative
-  // instance (R0,R1), every T in dev.copies gives another instance (T(R0),T(R1)) of the SAME
-  // physical edge somewhere in the tiling; the first T to reach a given physical edge (BFS order,
-  // starting at the identity) fixes its code deterministically. Since T is applied directly to
-  // (R0,R1) in that fixed order, point order is never swapped -- only whether T is orientation-
-  // reversing matters, so the code is just that sign (bit 2 of the J/U/S/I Klein-4 map). Verified
-  // against #70: the two "code" values correspond EXACTLY to which of the two neighbouring tile
-  // orbits sits on which side, every time -- not an arbitrary per-instance choice. This also
-  // explains why S folds should alternate: some instances are related to the representative by an
-  // orientation-preserving copy (translation/rotation), others by an orientation-reversing one (a
-  // reflection or -- for orbifolds with no mirrors at all, like 22x -- a glide), and the two give
-  // opposite chirality.
-  const codeOf = new Map();     // orbit -> Map(physKey -> {P0,P1,code})
-  for (const [o, [R0, R1]] of orbitRep) {
-    if (orbitType.get(o) === 'I') continue;
-    const seenAt = new Map();
-    for (const T of d.copies) {
-      const Q0 = DD.apply(T, R0), Q1 = DD.apply(T, R1), key = ek(Q0, Q1);
-      if (seenAt.has(key)) continue;
-      const det = T[0] * T[4] - T[1] * T[3];
-      seenAt.set(key, { P0: Q0, P1: Q1, code: det < 0 ? 2 : 0 });
-    }
-    codeOf.set(o, seenAt);
-  }
-
-  const seen = new Set(), edges = [];
-  for (const t of d.complete) {
-    if (!t.edgeOrbits) continue;
-    const m = t.pts.length;
-    for (let i = 0; i < m; i++) {
-      const P0 = t.pts[i], P1 = t.pts[(i + 1) % m], orb = t.edgeOrbits[i];
-      if (orb == null || orbitType.get(orb) === 'I') continue;
-      const key = ek(P0, P1);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      // Rare fallback (a handful of edges in a few types) when the BFS sample of the group
-      // didn't reach this exact instance: fall back to this tile's own order, uncorrected --
-      // same behaviour as before this fix, not a crash or a dropped edge.
-      const info = codeOf.get(orb).get(key) || { P0, P1, code: 0 };
-      const mapped = TC.applyMap(canonOf(orb), info.code);
-      edges.push({ orbit: orb, pts: TC.mapToEdge(mapped, info.P0, info.P1, false) });
-    }
-  }
-  return { edges, orbitIndex };
+  if (!d) return null;
+  const choice = new Map();
+  for (const [o, pts] of Object.entries(state.curveEdits || {})) choice.set(+o, { pts });
+  return window.TilingFigure.buildEdgeCurves(d, null, choice);
 }
 
 function load(id) {
   state.id = id;
+  state.curveEdits = {};                    // hand-edited curves belong to the type they were drawn on
+  state.shape = null;                       // ...and so does an edited shape
   if (location.hash.replace('#', '') !== id) history.replaceState(null, '', '#' + id);
   $('typeLinks').innerHTML = TY[id] && TY[id].v === 'impossible'
     ? `Proven impossible. <a href="proofs.html#${id}">See the published proof →</a>` : '';
@@ -737,10 +681,18 @@ function drawPair() {
   $('pairOne').classList.toggle('on', mode === 'one');
   $('pairUnit').classList.toggle('on', mode === 'unit');
   if (!d || !d.complete.length) { $('pairHint').textContent = ''; return; }
-  if (!state.pair || state.pair.dev !== d || state.pair.id !== state.id) {
+  if (!state.pair || state.pair.id !== state.id) {
     const tc = tileCounts(d);
     state.pair = { dev: d, id: state.id, tc,
       one: tilePatch(d, new Map([[tc.A, 1], [tc.B, 1]])), unit: tilePatch(d, tc.need) };
+  } else if (state.pair.dev !== d) {
+    // the same type, reshaped: follow the SAME tiles by their combinatorial id, so the panel doesn't jump while you drag
+    const byTid = new Map(d.complete.map(t => [t.tid, t]));
+    const follow = list => list && list.every(t => byTid.has(t.tid)) ? list.map(t => byTid.get(t.tid)) : null;
+    const tc = state.pair.tc;
+    state.pair = { dev: d, id: state.id, tc, view: state.pair.view,
+      one: follow(state.pair.one) || tilePatch(d, new Map([[tc.A, 1], [tc.B, 1]])),
+      unit: follow(state.pair.unit) || tilePatch(d, tc.need) };
   }
   const { tc } = state.pair, tiles = state.pair[mode];
   const nA = tc.need.get(tc.A), nB = tc.need.get(tc.B);
@@ -757,8 +709,13 @@ function drawPair() {
   for (const b of bounds) for (const p of b) {
     x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]);
   }
-  const s = Math.min((W - 24) / (x1 - x0 || 1), (H - 24) / (y1 - y0 || 1));
-  const ox = W / 2 - s * (x0 + x1) / 2, oy = H / 2 + s * (y0 + y1) / 2;
+  // hold the panel's view still while a corner is being dragged in it; refit otherwise
+  const dragging = (state.edit && state.edit.drag && state.edit.drag.fromPair) || state.curveDrag;
+  if (!dragging || !state.pair.view) {
+    const s0 = Math.min((W - 24) / (x1 - x0 || 1), (H - 24) / (y1 - y0 || 1));
+    state.pair.view = { s: s0, ox: W / 2 - s0 * (x0 + x1) / 2, oy: H / 2 + s0 * (y0 + y1) / 2 };
+  }
+  const { s, ox, oy } = state.pair.view;
   tiles.forEach((t, i) => {
     g.beginPath();
     bounds[i].forEach((p, j) => j ? g.lineTo(ox + s * p[0], oy - s * p[1]) : g.moveTo(ox + s * p[0], oy - s * p[1]));
@@ -766,7 +723,167 @@ function drawPair() {
     g.fillStyle = t.orbit === tc.A ? '#3d4f8f' : '#8a6330'; g.fill();
     g.strokeStyle = '#e6e9f0'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
   });
+  // EDITING HERE (John, 2026-10-22: "Instead of using the little popup to edit geometry, can we put an orange dot on the right
+  // hand panel where we draw the two (or more) tiles in isolation?"). With the editor on, every tile corner gets an orange dot;
+  // dragging one drags the domain corner behind it (tile.vaddr), so every copy of that corner moves together.
+  state.pair.dots = [];
+  if (editActive()) {
+    const live = new Set(state.edit.handles.filter(handleLive).map(h => h.corner));
+    tiles.forEach(t => t.pts.forEach((p, i) => {
+      const c = t.vaddr && t.vaddr[i] && t.vaddr[i].corner;
+      if (c == null || !live.has(c)) return;
+      const q = [ox + s * p[0], oy - s * p[1]];
+      if (state.pair.dots.some(d0 => Math.hypot(d0.q[0] - q[0], d0.q[1] - q[1]) < 3)) return;
+      state.pair.dots.push({ q, tid: t.tid, i, corner: c });
+      const on = state.edit.drag && state.edit.drag.fromPair && state.edit.drag.fromPair.corner === c;
+      g.beginPath(); g.arc(q[0], q[1], on ? 7 : 5.5, 0, 7);
+      g.fillStyle = '#f39c3d'; g.fill(); g.strokeStyle = '#0d0f14'; g.lineWidth = 1.5; g.stroke();
+    }));
+    // CURVES, edited the way program8's Explore edits a monohedral tile's (John, 2026-10-22: "Can we also make the curves
+    // editable there?" ... "this is very similar to what is in program8 ... just for two orbits"): hover an edge and its whole
+    // group lights up; drag any handle on any copy to move that point; drag the curve itself to add one; right-click a handle
+    // to remove it. Blue handles are on the derived half of a U or S curve (editable too); grey ones are pinned by the edge type.
+    state.pair.cdots = []; state.pair.curveInst = [];
+    const ec = state.edgeCurves;
+    if (curvesOn && ec && ec.orbitType) {
+      const byKey = new Map();
+      for (const e of ec.edges) { byKey.set(ptKey(e.P0) + '|' + ptKey(e.P1), e); byKey.set(ptKey(e.P1) + '|' + ptKey(e.P0), e); }
+      const seen = new Set(), S = w => [ox + s * w[0], oy - s * w[1]];
+      for (const t of tiles) for (let i = 0; i < t.pts.length; i++) {
+        const e = byKey.get(ptKey(t.pts[i]) + '|' + ptKey(t.pts[(i + 1) % t.pts.length]));
+        if (!e || seen.has(e)) continue;
+        seen.add(e);
+        const ty = ec.orbitType.get(e.orbit); if (ty === 'I') continue;
+        state.pair.curveInst.push({ orbit: e.orbit, e, ty, scr: e.pts.map(S) });
+      }
+      const active = state.curveDrag ? state.curveDrag.orbit : state.pair.hoverOrbit;
+      for (const ci of state.pair.curveInst) {
+        if (ci.orbit !== active) continue;
+        g.beginPath(); ci.scr.forEach((q, k) => k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]));
+        g.strokeStyle = '#f39c3d'; g.lineWidth = 3; g.stroke();
+        const raw = curveEditorPts(ci.orbit, ci.ty), full = TC.buildCanon(ci.ty, raw), n = raw.length;
+        for (let jj = 1; jj < full.length - 1; jj++) {
+          const { r, mirror } = TC.fullIdxToRaw(ci.ty, n, jj);
+          const fold = r === n - 1 && ci.ty !== 'J';
+          const pinned = fold && ci.ty === 'S';
+          const q = S(edgePoint(ci.e, full[jj]));
+          state.pair.cdots.push({ q, orbit: ci.orbit, r, mirror, e: ci.e, ty: ci.ty, fold, pinned });
+          g.fillStyle = pinned ? '#7a8090' : mirror ? '#7fa1ff' : '#f0f3f8';
+          g.strokeStyle = '#0d0f14'; g.lineWidth = 1.2;
+          g.fillRect(q[0] - 3.5, q[1] - 3.5, 7, 7); g.strokeRect(q[0] - 3.5, q[1] - 3.5, 7, 7);
+        }
+      }
+    }
+  }
 }
+function setCurve(orbit, raw) {
+  state.curveEdits[orbit] = raw;
+  state.edgeCurves = buildEdgeCurves(state.dev);
+  draw();
+}
+// the curve instance within 6px of a panel point: which instance, and which segment of its full curve
+function curveHit(x, y) {
+  let best = null, bd = 6;
+  for (const ci of (state.pair && state.pair.curveInst) || []) for (let k = 0; k + 1 < ci.scr.length; k++) {
+    const a = ci.scr[k], b = ci.scr[k + 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+    const u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2));
+    const d = Math.hypot(a[0] + u * dx - x, a[1] + u * dy - y);
+    if (d < bd) { bd = d; best = { ci, seg: k }; }
+  }
+  return best;
+}
+// A curve's editor points: the hand edit if there is one, else the stock motif this orbit was given.
+function curveEditorPts(orbit, ty) {
+  const ed = state.curveEdits && state.curveEdits[orbit];
+  return ed ? ed.map(p => p.slice()) : TC.motifPts(ty, state.edgeCurves.orbitIndex.get(orbit) || 0);
+}
+// canonical (editor-frame) point -> world, on one drawn instance of the edge (its Klein image `code`), and back
+function edgePoint(e, q) {
+  const x = (e.code & 1) ? 1 - q[0] : q[0], y = (e.code & 2) ? -q[1] : q[1];
+  const Ex = e.P1[0] - e.P0[0], Ey = e.P1[1] - e.P0[1];
+  return [e.P0[0] + x * Ex - y * Ey, e.P0[1] + x * Ey + y * Ex];
+}
+function edgeUnpoint(e, w) {
+  const Ex = e.P1[0] - e.P0[0], Ey = e.P1[1] - e.P0[1], L2 = Ex * Ex + Ey * Ey || 1;
+  const dx = w[0] - e.P0[0], dy = w[1] - e.P0[1];
+  const x = (dx * Ex + dy * Ey) / L2, y = (-dx * Ey + dy * Ex) / L2;
+  return [(e.code & 1) ? 1 - x : x, (e.code & 2) ? -y : y];
+}
+
+// Drag an orange dot in the two-tiles panel: hit-test the dots, start a drag of the handle for that domain corner, and on each
+// move pull the panel point back into the domain through that vertex's own isometry (inverse of vaddr.T).
+const invAffine = T => { const [a, b, c, d, e, f] = T, det = a * e - b * d;
+  return [e / det, -b / det, (b * f - c * e) / det, -d / det, a / det, (c * d - a * f) / det]; };
+function pairToWorld(ev) {
+  const r = $('pair').getBoundingClientRect(), v = state.pair.view;
+  return [(ev.clientX - r.left - v.ox) / v.s, (v.oy - (ev.clientY - r.top)) / v.s];
+}
+$('pair').addEventListener('pointerdown', ev => {
+  if (!editActive() || !state.pair || !state.pair.dots) return;
+  const r = $('pair').getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  let best = null, bd = 10;
+  for (const d0 of state.pair.dots) { const dd = Math.hypot(d0.q[0] - x, d0.q[1] - y); if (dd < bd) { bd = dd; best = d0; } }
+  let cbest = null, cbd = bd;
+  for (const c0 of state.pair.cdots || []) { const dd = Math.hypot(c0.q[0] - x, c0.q[1] - y); if (dd < cbd) { cbd = dd; cbest = c0; } }
+  const capture = () => { ev.preventDefault(); try { $('pair').setPointerCapture(ev.pointerId); } catch (e) { /* synthetic pointer */ } };
+  if (cbest) {                                                 // a curve handle is nearer than any corner
+    if (ev.button === 2) {                                     // right-click removes it (not an end, not a fold)
+      if (!cbest.fold) { const raw = curveEditorPts(cbest.orbit, cbest.ty); raw.splice(cbest.r, 1); setCurve(cbest.orbit, raw); }
+      ev.preventDefault(); return;
+    }
+    if (cbest.pinned) return;
+    capture();
+    state.curveDrag = { orbit: cbest.orbit, r: cbest.r, mirror: cbest.mirror, e: cbest.e, ty: cbest.ty, fold: cbest.fold };
+    return;
+  }
+  if (!best && ev.button === 0) {                              // on a curve itself: add a point there and drag it
+    const hit = curveHit(x, y);
+    if (hit) {
+      const raw = curveEditorPts(hit.ci.orbit, hit.ci.ty), n = raw.length;
+      let q = edgeUnpoint(hit.ci.e, pairToWorld(ev)), at = hit.seg + 1, mirror = false;
+      if (hit.ci.ty !== 'J' && hit.seg >= n - 1) { q = TC.mirrorPt(hit.ci.ty, q); at = (2 * n - 3) - hit.seg + 1; mirror = true; }
+      raw.splice(at, 0, q); setCurve(hit.ci.orbit, raw);
+      capture();
+      state.curveDrag = { orbit: hit.ci.orbit, r: at, mirror, e: hit.ci.e, ty: hit.ci.ty, fold: false };
+      return;
+    }
+  }
+  if (!best) return;
+  const h = state.edit.handles.find(hh => hh.corner === best.corner && handleLive(hh));
+  if (!h) return;
+  ev.preventDefault(); try { $('pair').setPointerCapture(ev.pointerId); } catch (e) { /* synthetic pointer */ }
+  startCornerDrag(h);
+  state.edit.drag.fromPair = { tid: best.tid, i: best.i, corner: best.corner };
+  draw();
+});
+$('pair').addEventListener('pointermove', ev => {
+  if (state.curveDrag) {
+    const cd = state.curveDrag, pts = curveEditorPts(cd.orbit, cd.ty);
+    let q = edgeUnpoint(cd.e, pairToWorld(ev));
+    if (cd.mirror) q = TC.mirrorPt(cd.ty, q);                  // a derived-half handle moves its raw source
+    q = [Math.min(0.98, Math.max(0.02, q[0])), q[1]];
+    if (cd.fold) q[0] = 0.5;                                   // a U curve's fold stays on the edge's perpendicular bisector
+    pts[cd.r] = q;
+    setCurve(cd.orbit, pts);
+    return;
+  }
+  // no drag: hovering an edge lights its group up and shows its handles (kept while the pointer is on one of them)
+  if (editActive() && state.pair && state.pair.curveInst) {
+    const r = $('pair').getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, hit = curveHit(x, y);
+    const onHandle = (state.pair.cdots || []).some(c0 => Math.hypot(c0.q[0] - x, c0.q[1] - y) < 8);
+    const o = hit ? hit.ci.orbit : onHandle ? state.pair.hoverOrbit : null;
+    if (o !== state.pair.hoverOrbit) { state.pair.hoverOrbit = o; drawPair(); }
+  }
+  if (!editActive() || !state.edit.drag || !state.edit.drag.fromPair) return;
+  const fp = state.edit.drag.fromPair, t = state.dev.complete.find(tt => tt.tid === fp.tid);
+  if (!t || !t.vaddr[fp.i]) return;
+  dragCornerTo(DD.apply(invAffine(t.vaddr[fp.i].T), pairToWorld(ev)));
+});
+$('pair').addEventListener('contextmenu', ev => ev.preventDefault());
+$('pair').addEventListener('pointerup', () => {
+  if (state.curveDrag) { state.curveDrag = null; draw(); return; }
+  if (state.edit && state.edit.drag && state.edit.drag.fromPair) window.dispatchEvent(new MouseEvent('mouseup'));
+});
 
 /* ---------- SVG export ----------
    John, 2026-08-16: "can you do a fix to netshape.html to let it save svg files?" -- a vector
@@ -1483,6 +1600,11 @@ function proofRecord() {
   return {
     format: 'banMonoTest-proof-1',
     type: '#' + state.id, symbol: t.sym, orbifold: t.orb, k: t.k, n: t.n, verdict: t.v,
+    // the tiling itself (John, 2026-10-22: "It would be nice to be able to save just the tiling, even if there are no
+    // configuration or regions marked"): the edited domain corners, or null for the default shape, and any hand-edited curves
+    // per edge orbit, as editor points. Both are restored on load before any point is re-attached.
+    shape: state.shape ? { P: state.shape.P, fingerprint: state.shape.fingerprint } : null,
+    curves: Object.keys(state.curveEdits || {}).length ? state.curveEdits : null,
     configurations: state.configs.map(g => ({
       id: g.id, label: g.label, tileOrbit: g.tile ? g.tile.orbit : null, tileCentre: g.tile ? g.tile.ctr : null,
       points: g.points.map((s, i) => ({ i: i + 1, kind: s.kind, orbit: s.orbit, xy: s.p, addr: s.addr || null })),
@@ -1552,6 +1674,21 @@ function loadRecord(rec) {
   if (!TY[id]) throw new Error(`unknown type "${rec.type}"`);
   goTo(id);
   if (!state.dev) throw new Error(`no drawing for type ${id}`);
+  let note = '';
+  if (rec.curves) state.curveEdits = JSON.parse(JSON.stringify(rec.curves));
+  if (rec.shape && rec.shape.P) {
+    beginEdit();
+    const M = state.edit && state.edit.M;
+    // the domain must be the same one the shape was drawn on: compare the fingerprint's hash (an object, so not by identity)
+    const fp = rec.shape.fingerprint, same = !fp || !M || (fp.hash ? fp.hash === M.fingerprint.hash : true);
+    if (M && M.P.length === rec.shape.P.length && same) {
+      M.P = rec.shape.P.map(p => (p ? p.slice() : p));
+      const r = applyRealization();
+      if (!r.ok) note = ' The saved shape could not be rebuilt, so the default shape is shown.';
+    } else note = ' The saved shape does not match this type\'s domain, so the default shape is shown.';
+    endEdit();
+  }
+  state.edgeCurves = buildEdgeCurves(state.dev);
   let cfgs = rec.configurations, regs = rec.regions;
   if (!cfgs && rec.configuration)       // older netshape export: one of each
     cfgs = [{ label: 'Config 1', tileOrbit: rec.containingTileOrbit, points: rec.configuration }];
@@ -1560,7 +1697,7 @@ function loadRecord(rec) {
   (cfgs || []).forEach((g, i) => state.configs.push(groupFromRecord('cfg', g, `Config ${i + 1}`)));
   (regs || []).forEach((g, i) => state.regions.push(groupFromRecord('reg', g, `Region ${i + 1}`)));
   syncUI(); draw();
-  return { configs: (cfgs || []).length, regions: (regs || []).length };
+  return { configs: (cfgs || []).length, regions: (regs || []).length, shape: !!(rec.shape && rec.shape.P), curves: !!rec.curves, note };
 }
 $('loadRec').addEventListener('click', () => $('loadFile').click());
 $('loadFile').addEventListener('change', async e => {
@@ -1568,7 +1705,8 @@ $('loadFile').addEventListener('change', async e => {
   if (!f) return;
   try {
     const n = loadRecord(JSON.parse(await f.text()));
-    $('verdict').innerHTML = `<div class="verdict v-yes">Loaded ${f.name}: ${n.configs} configuration(s), ${n.regions} region(s). Pick a pair under Test and run it.</div>`;
+    $('verdict').innerHTML = `<div class="verdict v-yes">Loaded ${f.name}: ${n.shape ? 'the saved shape, ' : ''}${n.curves ? 'edited curves, ' : ''}`
+      + `${n.configs} configuration(s), ${n.regions} region(s).${n.note}${n.configs && n.regions ? ' Pick a pair under Test and run it.' : ''}</div>`;
   } catch (err) {
     $('verdict').innerHTML = `<div class="verdict v-no">Couldn't load ${f.name}: ${err.message}</div>`;
   }
@@ -1676,7 +1814,7 @@ function beginEdit() {
   state.edit.dc = DE.dimensionControls(M, state.dev, TY[state.id] && TY[state.id].orb);
   state.edit.metrics = DE.metrics(state.dev);
   fdFit();
-  $('fdwrap').hidden = false;
+  $('fdwrap').hidden = !$('showFd').checked;    // the two-tiles panel is the editor now; the domain pane is optional
   $('editBtns').hidden = false;
   $('editToggle').textContent = 'Close editor';
   setEditMode('dimensions');
@@ -1773,6 +1911,7 @@ function applyRealization() {
   catch (e) { return { ok: false, reason: e.message }; }
   if (!dev || !dev.complete.length) return { ok: false, reason: 'no tiles' };
   state.dev = dev;
+  state.shape = { P: M.P.map(p => (p ? p.slice() : p)), fingerprint: { hash: M.fingerprint.hash } };   // what a saved record stores
   state.edgeCurves = buildEdgeCurves(dev);
   refreshPicks(dev);
   if (state.edit) {
@@ -2000,6 +2139,11 @@ $('fd').addEventListener('mousedown', e => {
   }
   if (!h) h = fdHandleAt(w[0], w[1]);
   if (!h) return;
+  startCornerDrag(h);
+  e.preventDefault();
+});
+// Start dragging a domain handle -- from the fundamental-domain pane or from a tile corner in the two-tiles panel.
+function startCornerDrag(h) {
   state.edit.undo.push(state.edit.M.P.map(p => p.slice()));
   if (state.edit.undo.length > 50) state.edit.undo.shift();
   state.edit.latticeRef = state.edit.lattice || state.edit.lattice0;
@@ -2022,15 +2166,18 @@ $('fd').addEventListener('mousedown', e => {
     pinScreen: (pinIdx != null && P0[pinIdx]) ? fdToS(P0[pinIdx]) : null,
     con: (h.corner != null && state.dev) ? DE.constraintAt(state.dev, P0[h.corner]) : null };
   state.edit.dragInfo = null;
-  e.preventDefault();
-});
+}
 window.addEventListener('mousemove', e => {
-  if (!editActive() || !state.edit.drag) return;
-  const M = state.edit.M, h = state.edit.drag.h;
+  if (!editActive() || !state.edit.drag || state.edit.drag.fromPair) return;
   const r = $('fd').getBoundingClientRect();
   let w = fdToW(e.clientX - r.left, e.clientY - r.top);
   const lo = state.edit.drag.latOff;
   if (lo && (lo[0] || lo[1])) w = [w[0] - lo[0], w[1] - lo[1]];   // the disc is nudged; the point is not
+  dragCornerTo(w);
+});
+// Move the dragged handle to w (domain coordinates), by the same routing whichever view the drag came from.
+function dragCornerTo(w) {
+  const M = state.edit.M, h = state.edit.drag.h;
   const snapshot = M.P.map(p => p.slice());
   /* Route by what the handle actually IS:
        interior            -- free, no constraint;
@@ -2123,7 +2270,7 @@ window.addEventListener('mousemove', e => {
   }
   holdView();
   drawFd(val);
-});
+}
 /* Slide the view so the ANCHOR -- the fixed point every dimension transform is built around --
    stays on the same screen pixel for the whole gesture. Pinning the dragged handle instead would
    freeze it under the cursor; pinning the anchor cancels only the procrustes translation, which is
@@ -2162,7 +2309,8 @@ window.addEventListener('mouseup', () => {
   drawFd();
 });
 
-$('editToggle').addEventListener('click', () => { editActive() ? endEdit() : beginEdit(); });
+$('editToggle').addEventListener('click', () => { editActive() ? endEdit() : beginEdit(); draw(); });
+$('showFd').addEventListener('change', () => { if (editActive()) $('fdwrap').hidden = !$('showFd').checked; });
 $('modeDim').addEventListener('click', () => setEditMode('dimensions'));
 $('modeShape').addEventListener('click', () => setEditMode('shape'));
 $('editReset').addEventListener('click', () => {
